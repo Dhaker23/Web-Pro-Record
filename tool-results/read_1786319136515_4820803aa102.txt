@@ -1,0 +1,786 @@
+     1→"use client";
+     2→
+     3→import {
+     4→  Monitor,
+     5→  Webcam,
+     6→  Mic,
+     7→  Volume2,
+     8→  RefreshCw,
+     9→  Play,
+    10→  Pause,
+    11→  Square,
+    12→  RotateCcw,
+    13→  Circle,
+    14→  Clock,
+    15→  Film,
+    16→  Settings2,
+    17→  Sparkles,
+    18→  Info,
+    19→  Droplet,
+    20→  Upload,
+    21→  Trash2,
+    22→} from "lucide-react";
+    23→import { Button } from "@/components/ui/button";
+    24→import { Card } from "@/components/ui/card";
+    25→import { Switch } from "@/components/ui/switch";
+    26→import { Label } from "@/components/ui/label";
+    27→import { Slider } from "@/components/ui/slider";
+    28→import { Input } from "@/components/ui/input";
+    29→import {
+    30→  Select,
+    31→  SelectContent,
+    32→  SelectItem,
+    33→  SelectTrigger,
+    34→  SelectValue,
+    35→} from "@/components/ui/select";
+    36→import { cn } from "@/lib/utils";
+    37→import { mimeToLabel } from "@/lib/recorder-utils";
+    38→import { OverlayTemplates } from "@/components/recorder/overlay-templates";
+    39→import type { UseRecorder } from "@/hooks/use-recorder";
+    40→import type { Lang, OutputQuality as Q } from "@/lib/i18n";
+    41→import type { WebcamPosition, WebcamShape, FrameRate } from "@/lib/i18n";
+    42→
+    43→type Props = {
+    44→  rec: UseRecorder;
+    45→  lang: Lang;
+    46→  t: (key: string) => string;
+    47→};
+    48→
+    49→function SectionCard({
+    50→  title,
+    51→  desc,
+    52→  icon: Icon,
+    53→  children,
+    54→  t,
+    55→}: {
+    56→  title: string;
+    57→  desc?: string;
+    58→  icon: React.ElementType;
+    59→  children: React.ReactNode;
+    60→  t: (k: string) => string;
+    61→}) {
+    62→  return (
+    63→    <Card className="overflow-hidden border-border/60 p-0 shadow-sm transition-shadow hover:shadow-md">
+    64→      <div className="flex items-center gap-2.5 border-b border-border/50 bg-muted/30 px-4 py-3">
+    65→        <div className="grid size-7 place-items-center rounded-lg bg-primary/10 text-primary">
+    66→          <Icon className="size-4" strokeWidth={2.2} />
+    67→        </div>
+    68→        <div className="min-w-0">
+    69→          <div className="text-sm font-semibold leading-tight">{title}</div>
+    70→          {desc ? (
+    71→            <div className="truncate text-[11px] text-muted-foreground">{desc}</div>
+    72→          ) : null}
+    73→        </div>
+    74→      </div>
+    75→      <div className="p-5">{children}</div>
+    76→    </Card>
+    77→  );
+    78→}
+    79→
+    80→function ToggleRow({
+    81→  icon: Icon,
+    82→  title,
+    83→  desc,
+    84→  checked,
+    85→  onToggle,
+    86→  disabled,
+    87→  accent = "primary",
+    88→}: {
+    89→  icon: React.ElementType;
+    90→  title: string;
+    91→  desc: string;
+    92→  checked: boolean;
+    93→  onToggle: (v: boolean) => void;
+    94→  disabled?: boolean;
+    95→  accent?: "primary" | "red" | "amber";
+    96→}) {
+    97→  const accentClass =
+    98→    accent === "red"
+    99→      ? "text-red-500 bg-red-500/10"
+   100→      : accent === "amber"
+   101→        ? "text-amber-500 bg-amber-500/10"
+   102→        : "text-primary bg-primary/10";
+   103→  return (
+   104→    <div
+   105→      data-checked={checked ? "true" : "false"}
+   106→      className={cn(
+   107→        "toggle-glow flex items-center justify-between gap-3 rounded-xl border p-3 transition-all duration-200",
+   108→        checked
+   109→          ? "border-primary/40 bg-primary/5"
+   110→          : "border-border/50 bg-card/40 hover:border-border hover:bg-card/70",
+   111→      )}
+   112→    >
+   113→      <div className="flex min-w-0 items-center gap-3">
+   114→        <div
+   115→          className={cn(
+   116→            "grid size-9 shrink-0 place-items-center rounded-lg transition-transform duration-200",
+   117→            accentClass,
+   118→            checked && "scale-105",
+   119→          )}
+   120→        >
+   121→          <Icon className="size-[18px]" strokeWidth={2.1} />
+   122→        </div>
+   123→        <div className="min-w-0">
+   124→          <div className="text-sm font-medium leading-tight">{title}</div>
+   125→          <div className="text-[11px] leading-snug text-muted-foreground">{desc}</div>
+   126→        </div>
+   127→      </div>
+   128→      <Switch checked={checked} onCheckedChange={onToggle} disabled={disabled} aria-label={title} />
+   129→    </div>
+   130→  );
+   131→}
+   132→
+   133→export function ControlPanel({ rec, lang, t }: Props) {
+   134→  const { settings, features } = rec;
+   135→  const disabled = rec.isRecording || rec.isPaused || rec.status === "countdown";
+   136→
+   137→  const positions: WebcamPosition[] = ["top-left", "top-right", "bottom-left", "bottom-right"];
+   138→
+   139→  return (
+   140→    <div className="flex flex-col gap-4">
+   141→      {/* Sources */}
+   142→      <SectionCard title={t("sourcesTitle")} desc={t("controlPanelDesc")} icon={Settings2} t={t}>
+   143→        <div className="flex flex-col gap-2.5">
+   144→          <ToggleRow
+   145→            icon={Monitor}
+   146→            title={t("screen")}
+   147→            desc={t("screenDesc")}
+   148→            checked
+   149→            onToggle={() => {}}
+   150→            disabled
+   151→          />
+   152→          <ToggleRow
+   153→            icon={Webcam}
+   154→            title={t("webcam")}
+   155→            desc={t("webcamDesc")}
+   156→            checked={settings.webcamEnabled}
+   157→            onToggle={(v) => rec.toggleWebcam(v)}
+   158→            disabled={disabled}
+   159→          />
+   160→          <ToggleRow
+   161→            icon={Mic}
+   162→            title={t("microphone")}
+   163→            desc={t("microphoneDesc")}
+   164→            checked={settings.micEnabled}
+   165→            onToggle={(v) => rec.updateSettings("micEnabled", v)}
+   166→            disabled={disabled}
+   167→          />
+   168→          <ToggleRow
+   169→            icon={Volume2}
+   170→            title={t("systemAudio")}
+   171→            desc={t("systemAudioDesc")}
+   172→            checked={settings.systemAudioEnabled}
+   173→            onToggle={(v) => rec.updateSettings("systemAudioEnabled", v)}
+   174→            disabled={disabled}
+   175→            accent="amber"
+   176→          />
+   177→          <div className="flex items-start gap-2 rounded-lg bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400/90">
+   178→            <Info className="mt-0.5 size-3.5 shrink-0" />
+   179→            <span>{t("systemAudioHint")}</span>
+   180→          </div>
+   181→        </div>
+   182→      </SectionCard>
+   183→
+   184→      {/* Devices */}
+   185→      <SectionCard title={t("cameraDevice")} desc={t("micDevice")} icon={Webcam} t={t}>
+   186→        <div className="flex flex-col gap-3">
+   187→          <div className="flex items-center justify-between">
+   188→            <Button
+   189→              variant="outline"
+   190→              size="sm"
+   191→              onClick={() => rec.refreshDevices()}
+   192→              className="gap-1.5"
+   193→            >
+   194→              <RefreshCw className="size-3.5" />
+   195→              {t("refreshDevices")}
+   196→            </Button>
+   197→          </div>
+   198→
+   199→          <div className="space-y-1.5">
+   200→            <Label htmlFor="cam-select" className="text-xs text-muted-foreground">
+   201→              {t("cameraDevice")}
+   202→            </Label>
+   203→            <Select
+   204→              value={rec.selectedCameraId || undefined}
+   205→              onValueChange={rec.setSelectedCameraId}
+   206→              disabled={disabled}
+   207→            >
+   208→              <SelectTrigger id="cam-select" className="w-full">
+   209→                <SelectValue placeholder={t("selectCamera")} />
+   210→              </SelectTrigger>
+   211→              <SelectContent>
+   212→                {rec.devices.cameras.length === 0 ? (
+   213→                  <SelectItem value="__none" disabled>
+   214→                    {t("noDevices")}
+   215→                  </SelectItem>
+   216→                ) : (
+   217→                  rec.devices.cameras.map((d, i) => (
+   218→                    <SelectItem key={d.deviceId || i} value={d.deviceId || `cam-${i}`}>
+   219→                      {d.label || `${t("cameraDevice")} ${i + 1}`}
+   220→                    </SelectItem>
+   221→                  ))
+   222→                )}
+   223→              </SelectContent>
+   224→            </Select>
+   225→          </div>
+   226→
+   227→          <div className="space-y-1.5">
+   228→            <Label htmlFor="mic-select" className="text-xs text-muted-foreground">
+   229→              {t("micDevice")}
+   230→            </Label>
+   231→            <Select
+   232→              value={rec.selectedMicId || undefined}
+   233→              onValueChange={rec.setSelectedMicId}
+   234→              disabled={disabled}
+   235→            >
+   236→              <SelectTrigger id="mic-select" className="w-full">
+   237→                <SelectValue placeholder={t("selectMic")} />
+   238→              </SelectTrigger>
+   239→              <SelectContent>
+   240→                {rec.devices.mics.length === 0 ? (
+   241→                  <SelectItem value="__none" disabled>
+   242→                    {t("noDevices")}
+   243→                  </SelectItem>
+   244→                ) : (
+   245→                  rec.devices.mics.map((d, i) => (
+   246→                    <SelectItem key={d.deviceId || i} value={d.deviceId || `mic-${i}`}>
+   247→                      {d.label || `${t("micDevice")} ${i + 1}`}
+   248→                    </SelectItem>
+   249→                  ))
+   250→                )}
+   251→              </SelectContent>
+   252→            </Select>
+   253→          </div>
+   254→
+   255→          {rec.screenLabel ? (
+   256→            <div className="rounded-lg border border-border/50 bg-muted/30 px-3 py-2">
+   257→              <div className="text-[11px] text-muted-foreground">{t("screenSourceInfo")}</div>
+   258→              <div className="mt-0.5 truncate text-xs font-medium">{rec.screenLabel}</div>
+   259→            </div>
+   260→          ) : null}
+   261→        </div>
+   262→      </SectionCard>
+   263→
+   264→      {/* Output */}
+   265→      <SectionCard title={t("outputTitle")} icon={Film} t={t}>
+   266→        <div className="flex flex-col gap-4">
+   267→          <div className="space-y-1.5">
+   268→            <Label className="text-xs text-muted-foreground">{t("outputQuality")}</Label>
+   269→            <Select
+   270→              value={settings.quality}
+   271→              onValueChange={(v) => rec.updateSettings("quality", v as Q)}
+   272→              disabled={disabled}
+   273→            >
+   274→              <SelectTrigger className="w-full">
+   275→                <SelectValue />
+   276→              </SelectTrigger>
+   277→              <SelectContent>
+   278→                <SelectItem value="720">{t("quality720")}</SelectItem>
+   279→                <SelectItem value="1080">{t("quality1080")}</SelectItem>
+   280→                <SelectItem value="1440">{t("quality1440")}</SelectItem>
+   281→                <SelectItem value="native">{t("qualityNative")}</SelectItem>
+   282→              </SelectContent>
+   283→            </Select>
+   284→            <p className="text-[11px] text-muted-foreground">{t("qualityHint")}</p>
+   285→          </div>
+   286→
+   287→          <div className="space-y-1.5">
+   288→            <Label className="text-xs text-muted-foreground">{t("frameRate")}</Label>
+   289→            <Select
+   290→              value={settings.frameRate}
+   291→              onValueChange={(v) => rec.updateSettings("frameRate", v as FrameRate)}
+   292→              disabled={disabled}
+   293→            >
+   294→              <SelectTrigger className="w-full">
+   295→                <SelectValue />
+   296→              </SelectTrigger>
+   297→              <SelectContent>
+   298→                <SelectItem value="24">24 fps</SelectItem>
+   299→                <SelectItem value="30">30 fps</SelectItem>
+   300→                <SelectItem value="60">60 fps</SelectItem>
+   301→              </SelectContent>
+   302→            </Select>
+   303→            <p className="text-[11px] text-muted-foreground">{t("fpsHint")}</p>
+   304→          </div>
+   305→
+   306→          <div className="space-y-1.5">
+   307→            <div className="flex items-center justify-between">
+   308→              <Label className="text-xs text-muted-foreground">{t("videoBitrate")}</Label>
+   309→              <span className="text-[11px] font-medium text-muted-foreground">
+   310→                {settings.videoBitrate ? `${(settings.videoBitrate / 1_000_000).toFixed(1)} Mbps` : t("bitrateAuto")}
+   311→              </span>
+   312→            </div>
+   313→            <Slider
+   314→              value={[settings.videoBitrate / 1_000_000]}
+   315→              min={0}
+   316→              max={20}
+   317→              step={0.5}
+   318→              onValueChange={(v) => rec.updateSettings("videoBitrate", Math.round(v[0] * 1_000_000))}
+   319→              disabled={disabled}
+   320→            />
+   321→          </div>
+   322→
+   323→          <div className="space-y-1.5">
+   324→            <div className="flex items-center justify-between">
+   325→              <Label className="text-xs text-muted-foreground">{t("audioBitrate")}</Label>
+   326→              <span className="text-[11px] font-medium text-muted-foreground">
+   327→                {settings.audioBitrate ? `${Math.round(settings.audioBitrate / 1000)} kbps` : t("bitrateAuto")}
+   328→              </span>
+   329→            </div>
+   330→            <Slider
+   331→              value={[settings.audioBitrate / 1000]}
+   332→              min={0}
+   333→              max={320}
+   334→              step={16}
+   335→              onValueChange={(v) => rec.updateSettings("audioBitrate", Math.round(v[0] * 1000))}
+   336→              disabled={disabled}
+   337→            />
+   338→          </div>
+   339→
+   340→          {/* Recording format preview — shows the negotiated codec before recording */}
+   341→          {rec.negotiatedMime ? (
+   342→            <div className="codec-shimmer relative flex items-center justify-between gap-2 overflow-hidden rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5">
+   343→              <div className="min-w-0">
+   344→                <div className="text-[11px] font-medium text-muted-foreground">{t("willRecordAs")}</div>
+   345→                <div className="mt-0.5 truncate font-mono text-xs font-bold text-primary">
+   346→                  {mimeToLabel(rec.negotiatedMime)}
+   347→                </div>
+   348→              </div>
+   349→              <div className="flex items-center gap-1.5">
+   350→                <span className="size-1.5 rounded-full bg-emerald-500" />
+   351→                <Film className="size-4 shrink-0 text-primary" />
+   352→              </div>
+   353→            </div>
+   354→          ) : null}
+   355→
+   356→          {/* Adaptive FPS toggle */}
+   357→          <label className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-card/40 px-3 py-2">
+   358→            <div className="min-w-0">
+   359→              <div className="text-xs font-medium">{t("adaptiveFps")}</div>
+   360→              <div className="text-[10px] text-muted-foreground">{t("adaptiveFpsHint")}</div>
+   361→            </div>
+   362→            <Switch
+   363→              checked={settings.adaptiveFps}
+   364→              onCheckedChange={(v) => rec.updateSettings("adaptiveFps", v)}
+   365→              disabled={disabled}
+   366→              aria-label={t("adaptiveFps")}
+   367→            />
+   368→          </label>
+   369→        </div>
+   370→      </SectionCard>
+   371→
+   372→      {/* Webcam overlay */}
+   373→      <SectionCard title={t("overlayTitle")} icon={Webcam} t={t}>
+   374→        <div className={cn("flex flex-col gap-4", !settings.webcamEnabled && "pointer-events-none opacity-50")}>
+   375→          <OverlayTemplates rec={rec} lang={lang} t={t} />
+   376→          <div className="grid grid-cols-2 gap-3">
+   377→            <div className="space-y-1.5">
+   378→              <Label className="text-xs text-muted-foreground">{t("webcamShape")}</Label>
+   379→              <Select
+   380→                value={settings.webcamShape}
+   381→                onValueChange={(v) => rec.updateSettings("webcamShape", v as WebcamShape)}
+   382→                disabled={disabled || !settings.webcamEnabled}
+   383→              >
+   384→                <SelectTrigger className="w-full">
+   385→                  <SelectValue />
+   386→                </SelectTrigger>
+   387→                <SelectContent>
+   388→                  <SelectItem value="rounded">{t("shapeRounded")}</SelectItem>
+   389→                  <SelectItem value="circle">{t("shapeCircle")}</SelectItem>
+   390→                </SelectContent>
+   391→              </Select>
+   392→            </div>
+   393→            <div className="space-y-1.5">
+   394→              <Label className="text-xs text-muted-foreground">{t("cameraPosition")}</Label>
+   395→              <Select
+   396→                value={settings.webcamPosition}
+   397→                onValueChange={(v) => rec.updateSettings("webcamPosition", v as WebcamPosition)}
+   398→                disabled={disabled || !settings.webcamEnabled}
+   399→              >
+   400→                <SelectTrigger className="w-full">
+   401→                  <SelectValue />
+   402→                </SelectTrigger>
+   403→                <SelectContent>
+   404→                  {positions.map((p) => (
+   405→                    <SelectItem key={p} value={p}>
+   406→                      {t(`pos${p.replace(/-(.)/g, (_, c) => c.toUpperCase()).replace(/^./, (c) => c.toUpperCase())}`)}
+   407→                    </SelectItem>
+   408→                  ))}
+   409→                </SelectContent>
+   410→              </Select>
+   411→            </div>
+   412→          </div>
+   413→
+   414→          {/* Position grid picker — clicking a preset clears any custom drag position */}
+   415→          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+   416→            {positions.map((p) => (
+   417→              <button
+   418→                key={p}
+   419→                type="button"
+   420→                onClick={() => {
+   421→                  rec.updateSettings("webcamPosition", p);
+   422→                  rec.setWebcamFreePos(null);
+   423→                }}
+   424→                disabled={disabled || !settings.webcamEnabled}
+   425→                aria-pressed={settings.webcamPosition === p && !rec.freePos}
+   426→                className={cn(
+   427→                  "relative aspect-[4/3] rounded-lg border bg-card transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+   428→                  settings.webcamPosition === p && !rec.freePos
+   429→                    ? "border-primary ring-1 ring-primary/40"
+   430→                    : "border-border/50 hover:border-primary/40",
+   431→                )}
+   432→              >
+   433→                <div
+   434→                  className={cn(
+   435→                    "absolute size-3 rounded-sm bg-primary/70",
+   436→                    p.includes("top") ? "top-1.5" : "bottom-1.5",
+   437→                    p.includes("left") ? "left-1.5" : "right-1.5",
+   438→                  )}
+   439→                />
+   440→              </button>
+   441→            ))}
+   442→          </div>
+   443→
+   444→          {/* Custom position indicator + reset */}
+   445→          {rec.freePos ? (
+   446→            <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+   447→              <div className="flex items-center gap-2">
+   448→                <div className="size-1.5 rounded-full bg-primary" />
+   449→                <span className="text-xs font-medium text-primary">{t("customPosition")}</span>
+   450→                <span className="font-mono text-[10px] text-muted-foreground">
+   451→                  ({Math.round(rec.freePos.x * 100)}%, {Math.round(rec.freePos.y * 100)}%)
+   452→                </span>
+   453→              </div>
+   454→              <Button
+   455→                variant="ghost"
+   456→                size="sm"
+   457→                className="h-7 gap-1 px-2 text-xs"
+   458→                onClick={() => rec.setWebcamFreePos(null)}
+   459→                disabled={disabled}
+   460→              >
+   461→                <RotateCcw className="size-3" />
+   462→                {t("resetPosition")}
+   463→              </Button>
+   464→            </div>
+   465→          ) : (
+   466→            <p className="text-[11px] text-muted-foreground">{t("webcamFreePosHint")}</p>
+   467→          )}
+   468→
+   469→          <div className="space-y-1.5">
+   470→            <div className="flex items-center justify-between">
+   471→              <Label className="text-xs text-muted-foreground">{t("cameraSize")}</Label>
+   472→              <span className="text-[11px] font-medium text-muted-foreground">{settings.webcamSize}%</span>
+   473→            </div>
+   474→            <Slider
+   475→              value={[settings.webcamSize]}
+   476→              min={10}
+   477→              max={50}
+   478→              step={1}
+   479→              onValueChange={(v) => rec.updateSettings("webcamSize", v[0])}
+   480→              disabled={disabled || !settings.webcamEnabled}
+   481→            />
+   482→          </div>
+   483→
+   484→          <div className="space-y-1.5">
+   485→            <div className="flex items-center justify-between">
+   486→              <Label className="text-xs text-muted-foreground">{t("overlayMargin")}</Label>
+   487→              <span className="text-[11px] font-medium text-muted-foreground">{settings.webcamMargin}px</span>
+   488→            </div>
+   489→            <Slider
+   490→              value={[settings.webcamMargin]}
+   491→              min={0}
+   492→              max={80}
+   493→              step={2}
+   494→              onValueChange={(v) => rec.updateSettings("webcamMargin", v[0])}
+   495→              disabled={disabled || !settings.webcamEnabled}
+   496→            />
+   497→          </div>
+   498→
+   499→          <div className="flex flex-wrap gap-x-4 gap-y-2">
+   500→            <label className="flex items-center gap-2 text-xs">
+   501→              <Switch
+   502→                checked={settings.webcamBorder}
+   503→                onCheckedChange={(v) => rec.updateSettings("webcamBorder", v)}
+   504→                disabled={disabled || !settings.webcamEnabled}
+   505→              />
+   506→              {t("overlayBorder")}
+   507→            </label>
+   508→            <label className="flex items-center gap-2 text-xs">
+   509→              <Switch
+   510→                checked={settings.webcamShadow}
+   511→                onCheckedChange={(v) => rec.updateSettings("webcamShadow", v)}
+   512→                disabled={disabled || !settings.webcamEnabled}
+   513→              />
+   514→              {t("overlayShadow")}
+   515→            </label>
+   516→            <label className="flex items-center gap-2 text-xs">
+   517→              <Switch
+   518→                checked={settings.countdown}
+   519→                onCheckedChange={(v) => rec.updateSettings("countdown", v)}
+   520→                disabled={disabled}
+   521→              />
+   522→              {t("countdown")}
+   523→            </label>
+   524→          </div>
+   525→
+   526→          {settings.countdown ? (
+   527→            <div className="space-y-1.5">
+   528→              <div className="flex items-center justify-between">
+   529→                <Label className="text-xs text-muted-foreground">{t("countdownSeconds")}</Label>
+   530→                <span className="text-[11px] font-medium text-muted-foreground">{settings.countdownSeconds}{t("secondsShort")}</span>
+   531→              </div>
+   532→              <Slider
+   533→                value={[settings.countdownSeconds]}
+   534→                min={1}
+   535→                max={10}
+   536→                step={1}
+   537→                onValueChange={(v) => rec.updateSettings("countdownSeconds", v[0])}
+   538→                disabled={disabled}
+   539→              />
+   540→            </div>
+   541→          ) : null}
+   542→        </div>
+   543→      </SectionCard>
+   544→
+   545→      {/* Round 10: Watermark (independent of webcam) */}
+   546→      <SectionCard title={t("watermark")} icon={Droplet} t={t}>
+   547→        <div className="flex flex-col gap-3">
+   548→          <label className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-card/40 px-3 py-2">
+   549→            <span className="text-xs font-medium">{t("watermark")}</span>
+   550→            <Switch
+   551→              checked={settings.watermark}
+   552→              onCheckedChange={(v) => rec.updateSettings("watermark", v)}
+   553→              disabled={disabled}
+   554→              aria-label={t("watermark")}
+   555→            />
+   556→          </label>
+   557→          {settings.watermark && (
+   558→            <div className="space-y-3 rounded-xl border border-border/50 bg-muted/30 p-3">
+   559→              <div className="text-[11px] font-medium text-muted-foreground">{t("watermarkCustom")}</div>
+   560→              <div className="space-y-1.5">
+   561→                <Label className="text-[10px] text-muted-foreground">{t("watermarkText")}</Label>
+   562→                <Input
+   563→                  value={settings.watermarkText}
+   564→                  onChange={(e) => rec.updateSettings("watermarkText", e.target.value)}
+   565→                  placeholder={t("watermarkTextPlaceholder")}
+   566→                  disabled={disabled}
+   567→                  className="h-8 text-xs"
+   568→                />
+   569→                <Button
+   570→                  variant="ghost"
+   571→                  size="sm"
+   572→                  className="h-6 gap-1 px-2 text-[10px] text-muted-foreground"
+   573→                  onClick={() => rec.updateSettings("watermarkText", "")}
+   574→                  disabled={disabled}
+   575→                >
+   576→                  {t("watermarkUseApp")}
+   577→                </Button>
+   578→              </div>
+   579→              <div className="space-y-1.5">
+   580→                <div className="flex items-center justify-between">
+   581→                  <Label className="text-[10px] text-muted-foreground">{t("watermarkOpacity")}</Label>
+   582→                  <span className="text-[10px] font-medium text-muted-foreground">
+   583→                    {Math.round(settings.watermarkOpacity * 100)}%
+   584→                  </span>
+   585→                </div>
+   586→                <Slider
+   587→                  value={[settings.watermarkOpacity]}
+   588→                  min={0.1}
+   589→                  max={1}
+   590→                  step={0.05}
+   591→                  onValueChange={(v) => rec.updateSettings("watermarkOpacity", v[0])}
+   592→                  disabled={disabled}
+   593→                />
+   594→              </div>
+   595→              <div className="space-y-1.5">
+   596→                <div className="flex items-center justify-between">
+   597→                  <Label className="text-[10px] text-muted-foreground">{t("watermarkSize")}</Label>
+   598→                  <span className="text-[10px] font-medium text-muted-foreground">
+   599→                    {Math.round(settings.watermarkSize * 1000)}‰
+   600→                  </span>
+   601→                </div>
+   602→                <Slider
+   603→                  value={[settings.watermarkSize]}
+   604→                  min={0.01}
+   605→                  max={0.06}
+   606→                  step={0.002}
+   607→                  onValueChange={(v) => rec.updateSettings("watermarkSize", v[0])}
+   608→                  disabled={disabled}
+   609→                />
+   610→              </div>
+   611→
+   612→              {/* Round 11: Watermark mode selector */}
+   613→              <div className="space-y-1.5">
+   614→                <Label className="text-[10px] text-muted-foreground">{t("watermarkMode")}</Label>
+   615→                <Select
+   616→                  value={settings.watermarkMode}
+   617→                  onValueChange={(v) => rec.updateSettings("watermarkMode", v as "text" | "logo" | "both")}
+   618→                  disabled={disabled}
+   619→                >
+   620→                  <SelectTrigger className="h-8 w-full text-xs">
+   621→                    <SelectValue />
+   622→                  </SelectTrigger>
+   623→                  <SelectContent>
+   624→                    <SelectItem value="text">{t("watermarkModeText")}</SelectItem>
+   625→                    <SelectItem value="logo">{t("watermarkModeLogo")}</SelectItem>
+   626→                    <SelectItem value="both">{t("watermarkModeBoth")}</SelectItem>
+   627→                  </SelectContent>
+   628→                </Select>
+   629→              </div>
+   630→
+   631→              {/* Round 11: Logo upload (shown when mode includes logo) */}
+   632→              {(settings.watermarkMode === "logo" || settings.watermarkMode === "both") && (
+   633→                <div className="space-y-2 rounded-lg border border-border/50 bg-card/40 p-2.5">
+   634→                  <Label className="text-[10px] text-muted-foreground">{t("watermarkLogo")}</Label>
+   635→                  <p className="text-[9px] text-muted-foreground/70">{t("watermarkLogoDesc")}</p>
+   636→                  <div className="flex items-center gap-2">
+   637→                    <label className="flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs font-medium transition-colors hover:bg-accent">
+   638→                      <Upload className="size-3" />
+   639→                      {t("watermarkLogoUpload")}
+   640→                      <input
+   641→                        type="file"
+   642→                        accept="image/png,image/jpeg,image/svg+xml"
+   643→                        className="hidden"
+   644→                        onChange={(e) => {
+   645→                          const file = e.target.files?.[0];
+   646→                          if (!file) return;
+   647→                          const reader = new FileReader();
+   648→                          reader.onload = () => {
+   649→                            const dataUrl = reader.result as string;
+   650→                            rec.updateSettings("watermarkLogoDataUrl", dataUrl);
+   651→                          };
+   652→                          reader.onerror = () => {};
+   653→                          reader.readAsDataURL(file);
+   654→                          e.target.value = "";
+   655→                        }}
+   656→                      />
+   657→                    </label>
+   658→                    {settings.watermarkLogoDataUrl && (
+   659→                      <Button
+   660→                        variant="ghost"
+   661→                        size="sm"
+   662→                        className="h-8 gap-1 px-2 text-xs text-muted-foreground hover:text-destructive"
+   663→                        onClick={() => rec.updateSettings("watermarkLogoDataUrl", "")}
+   664→                        disabled={disabled}
+   665→                      >
+   666→                        <Trash2 className="size-3" />
+   667→                        {t("watermarkLogoRemove")}
+   668→                      </Button>
+   669→                    )}
+   670→                  </div>
+   671→                  {/* Logo preview + size slider */}
+   672→                  {settings.watermarkLogoDataUrl && (
+   673→                    <div className="flex items-center gap-2">
+   674→                      <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded border border-border/50 bg-black/40">
+   675→                        <img src={settings.watermarkLogoDataUrl} alt="logo" className="max-h-full max-w-full object-contain" />
+   676→                      </div>
+   677→                      <div className="flex-1 space-y-1">
+   678→                        <div className="flex items-center justify-between">
+   679→                          <span className="text-[9px] text-muted-foreground">{t("watermarkLogoSize")}</span>
+   680→                          <span className="text-[9px] font-medium text-muted-foreground">
+   681→                            {Math.round(settings.watermarkLogoSize * 100)}%
+   682→                          </span>
+   683→                        </div>
+   684→                        <Slider
+   685→                          value={[settings.watermarkLogoSize]}
+   686→                          min={0.02}
+   687→                          max={0.15}
+   688→                          step={0.005}
+   689→                          onValueChange={(v) => rec.updateSettings("watermarkLogoSize", v[0])}
+   690→                          disabled={disabled}
+   691→                        />
+   692→                      </div>
+   693→                    </div>
+   694→                  )}
+   695→                </div>
+   696→              )}
+   697→            </div>
+   698→          )}
+   699→        </div>
+   700→      </SectionCard>
+   701→
+   702→      {/* Timer + actions */}
+   703→      <SectionCard title={t("recordingTimer")} icon={Clock} t={t}>
+   704→        <div className="flex flex-col gap-4">
+   705→          <div className="flex items-center justify-center gap-2.5 rounded-xl border border-border/50 bg-muted/30 py-4">
+   706→            <Circle
+   707→              className={cn(
+   708→                "size-2.5",
+   709→                rec.isRecording ? "fill-red-500 text-red-500 rec-dot" : "fill-muted-foreground/40 text-muted-foreground/40",
+   710→              )}
+   711→            />
+   712→            <span className="font-mono text-3xl font-bold tabular-nums tracking-tight">
+   713→              {rec.formatDuration(rec.elapsed)}
+   714→            </span>
+   715→          </div>
+   716→
+   717→          <div className="grid grid-cols-2 gap-2.5">
+   718→            {rec.isRecording ? (
+   719→              <Button
+   720→                variant="outline"
+   721→                onClick={rec.pauseRecording}
+   722→                className="gap-2"
+   723→                size="lg"
+   724→              >
+   725→                <Pause className="size-4" />
+   726→                {t("pause")}
+   727→              </Button>
+   728→            ) : rec.isPaused ? (
+   729→              <Button
+   730→                variant="outline"
+   731→                onClick={rec.resumeRecording}
+   732→                className="gap-2"
+   733→                size="lg"
+   734→              >
+   735→                <Play className="size-4" />
+   736→                {t("resume")}
+   737→              </Button>
+   738→            ) : (
+   739→              <Button
+   740→                onClick={rec.startRecording}
+   741→                disabled={!rec.canStart}
+   742→                className="gap-2 bg-red-600 text-white hover:bg-red-600/90"
+   743→                size="lg"
+   744→              >
+   745→                <Circle className="size-3.5 fill-current" />
+   746→                {t("startRecording")}
+   747→              </Button>
+   748→            )}
+   749→
+   750→            {(rec.isRecording || rec.isPaused) && (
+   751→              <Button
+   752→                onClick={() => rec.stopRecording()}
+   753→                variant="destructive"
+   754→                className="gap-2"
+   755→                size="lg"
+   756→              >
+   757→                <Square className="size-4 fill-current" />
+   758→                {t("stop")}
+   759→              </Button>
+   760→            )}
+   761→            {!(rec.isRecording || rec.isPaused) && (
+   762→              <Button
+   763→                onClick={rec.resetAll}
+   764→                variant="outline"
+   765→                className="gap-2"
+   766→                size="lg"
+   767→                disabled={rec.status === "idle" && !rec.result}
+   768→              >
+   769→                <RotateCcw className="size-4" />
+   770→                {t("reset")}
+   771→              </Button>
+   772→            )}
+   773→          </div>
+   774→
+   775→          {rec.features && !rec.features.getDisplayMedia ? (
+   776→            <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-[11px] text-red-600 dark:text-red-400">
+   777→              <Info className="mt-0.5 size-3.5 shrink-0" />
+   778→              <span>{t("errUnsupported")}</span>
+   779→            </div>
+   780→          ) : null}
+   781→        </div>
+   782→      </SectionCard>
+   783→    </div>
+   784→  );
+   785→}
+   786→

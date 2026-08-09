@@ -1,0 +1,202 @@
+   100→
+   101→### Stage Summary
+   102→- **QA results:** Page loads 200, no errors/hydration warnings. Keyboard shortcuts verified working (Ctrl+L toggled EN→AR→RTL live). Shortcuts dialog renders all 9 shortcuts with styled `<kbd>`. Format chip shows "Will record as: WebM · VP9 + Opus". 4 sliders present (video bitrate, audio bitrate, webcam size, webcam margin).
+   103→- **VLM verdict (round 2):** All 7 targeted styling improvements confirmed present (glassmorphism badge ✓, trust card hover lift + accent line ✓, recessed preview + wireframe monitor ✓, emerald toggle glow ✓, tech-spec help grid w/ monospace + zebra + pills ✓, footer gradient border ✓, overall premium ✓).
+   104→- **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-recorder.ts`, `src/components/recorder/control-panel.tsx`, `src/components/recorder/header.tsx`, `src/components/recorder/hero.tsx`, `src/components/recorder/live-preview.tsx`, `src/components/recorder/help-section.tsx`, `src/components/recorder/footer.tsx`, `src/components/recorder/shortcuts-dialog.tsx` (new), `src/app/page.tsx`, `src/app/globals.css`, `eslint.config.mjs`.
+   105→
+   106→### Remaining recommendations for next phase
+   107→1. ~~Draggable webcam overlay~~ ✅ DONE (round 3)
+   108→2. **Adaptive FPS** detection for 60fps canvas compositing on heavy screens.
+   109→3. **Persist lang + theme** (lang is app-level state; theme uses next-themes which can persist — verify).
+   110→4. **Notes section visual distinction** (subtle bg/border to differentiate from feature grid — minor VLM gap).
+   111→5. **Manual real-browser recording validation** (cannot be done in headless).
+   112→
+   113→---
+   114→
+   115→## Round 3 — Draggable Overlay, Snapshots, PiP, Live Stats (cron webDevReview)
+   116→
+   117→### Task ID: 3
+   118→### Agent: main (cron webDevReview)
+   119→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+   120→
+   121→### Work Log
+   122→- Read worklog; confirmed rounds 1 & 2 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+   123→- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working live.
+   124→- VLM critical assessment identified: live preview empty state (already improved in R2 but can host new features), footer notes density, and under-utilized space for snapshots/PiP/stats.
+   125→- **New features added (Round 3):**
+   126→  - **Draggable webcam overlay (free position)** — in idle preview, the webcam is now a CSS-positioned draggable element (pointer events with capture). Dragging sets a normalized `freePos {x,y}` (0..1) that the canvas compositor uses during recording. A "Custom position" indicator with percentage coords + a "Reset position" button appears in the control panel. Clicking any preset position in the grid picker clears the free position. A "Drag to move" hint appears on hover. The idle canvas loop no longer double-draws the webcam (the CSS overlay handles it).
+   127→  - **Recording snapshots gallery** — `captureSnapshot()` grabs the current canvas frame as a PNG data URL during recording. A new `SnapshotsGallery` component shows a horizontal scrollable strip of thumbnails (max 24) with elapsed-time badges, hover-to-reveal download + remove buttons, a capture button, and a clear-all button. Snapshots are downloadable as PNG. Empty state included.
+   128→  - **Picture-in-Picture (PiP)** — a hidden `<video>` is created and bound to the combined stream; `togglePiP()` requests/exits PiP. A PiP toggle button appears in the preview header during recording (only when `document.pictureInPictureEnabled` is true). PiP state tracked via `enterpictureinpicture`/`leavepictureinpicture` events. Cleanup exits PiP + detaches the video on stop/reset.
+   129→  - **Live stats overlay** — during recording, a top-right overlay shows elapsed time, estimated file size (computed from video+audio bitrate × elapsed), and FPS. Updates every 500ms via a dedicated interval that's started/paused/stopped with the recording lifecycle.
+   130→  - **Capture snapshot button** in the preview header (during recording).
+   131→- **i18n:** added ~20 new keys (EN + AR) for snapshots, PiP, live stats, custom position, reset position.
+   132→- **Hook architecture:** added `FreePos`, `Snapshot`, `LiveStats` types; new state (`freePos`, `snapshots`, `liveStats`, `pipActive`); new refs (`freePosRef`, `statsTimerRef`, `frameCountRef`, `lastFpsTimeRef`, `lastFpsRef`, `pipVideoRef`); new actions (`setWebcamFreePos`, `captureSnapshot`, `removeSnapshot`, `clearSnapshots`, `downloadSnapshot`, `togglePiP`, `ensurePipVideo`, `startStatsLoop`, `stopStatsLoop`). Round-3 block declared before `startRecording` to satisfy `react-hooks/immutability`. `cleanupMedia` and `cleanupAll` extended to tear down stats loop, PiP, snapshots, free pos.
+   133→- **Styling:** live preview overlay uses `ResizeObserver` for responsive webcam sizing (avoids reading refs during render — satisfies `react-hooks/refs`); snapshots gallery uses group-hover reveal with gradient overlays; live stats use monospace tabular-nums with icon separators.
+   134→- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+   135→
+   136→### Stage Summary
+   137→- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 3 features present: drag hint ✓, position grid picker (4+ aria-pressed buttons) ✓, "Will record as" codec chip ✓, audio bitrate slider ✓. Keyboard shortcuts (Ctrl+L) still work (toggled EN→AR→RTL live). Arabic RTL layout verified by VLM (correctly mirrored, no overflow).
+   138→- **VLM verdict (round 3):** Live preview polished with recessed empty state ✓; keyboard shortcuts button in header ✓; no major layout issues. (Advanced settings below the fold in default view — verified via DOM text search.)
+   139→- **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-recorder.ts`, `src/components/recorder/live-preview.tsx`, `src/components/recorder/control-panel.tsx`, `src/components/recorder/snapshots-gallery.tsx` (new), `src/app/page.tsx`.
+   140→
+   141→### Remaining recommendations for next phase
+   142→1. ~~Adaptive FPS~~ ✅ DONE (round 4)
+   143→2. ~~Persist lang + theme~~ ✅ DONE (round 4 — lang via safe localStorage; theme already persisted by next-themes)
+   144→3. **Snapshot video clip** — allow capturing a short video clip (e.g., 5s) instead of just a still frame.
+   145→4. ~~Recording timeline scrubber~~ ✅ DONE (round 4 — timeline with snapshot markers, click-to-seek)
+   146→5. **Manual real-browser recording validation** (cannot be done in headless — recommend testing actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS in Chrome).
+   147→
+   148→---
+   149→
+   150→## Round 4 — Adaptive FPS, Waveform, Timeline, Persistence (cron webDevReview)
+   151→
+   152→### Task ID: 4
+   153→### Agent: main (cron webDevReview)
+   154→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+   155→
+   156→### Work Log
+   157→- Read worklog; confirmed rounds 1–3 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+   158→- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+   159→- VLM critical assessment identified: live preview empty state, device selection UI, and footer notes density as weak areas; recommended live data visualization (waveform, FPS graph, timeline).
+   160→- **New features added (Round 4):**
+   161→  - **Adaptive FPS detection** — measures actual render FPS via a separate rAF (1s window, counts drawn frames). If measured FPS < 70% of target and target > 24, auto-downgrades effective FPS (60→30→24). The render loop is throttled to the effective FPS. An "Adaptive FPS" toggle (default on) is in the output section. A downgrade warning badge appears in the live stats overlay + hint line. State: `actualFps`, `fpsDowngraded`, `effectiveFps`.
+   162→  - **Real-time audio waveform** — `startWaveformLoop()` captures time-domain samples from the AnalyserNode, downsamples to 64 samples, and renders a filled gradient waveform on a canvas (`WaveformViz` component). Shown below the preview during recording when mic is enabled. Includes a live level percentage readout.
+   163→  - **Recording timeline with snapshot markers** — `RecordingTimeline` component renders a seekable timeline bar on the final recording player. Shows progress fill, playhead, and amber diamond markers for each snapshot (positioned by elapsed time). Clicking a marker seeks the video to that timestamp. Hover shows a tooltip with the timestamp. Synced to the `<video>` element via event listeners.
+   164→  - **Language persistence** — `loadLang()`/`saveLang()` with safe localStorage (key `wpr-lang-v1`). Loaded on mount via useEffect (client-only to avoid hydration mismatch). Verified: switching to Arabic and reloading persists the language.
+   165→  - **Theme persistence** — confirmed next-themes already persists theme via its own storage.
+   166→- **i18n:** added ~16 new keys (EN + AR) for adaptive FPS, waveform, timeline, persistence, FPS downgrade.
+   167→- **Hook architecture:** new `WaveformData` type; new state (`waveform`, `actualFps`, `fpsDowngraded`, `effectiveFps`); new refs (`renderFrameCountRef`, `fpsMeasureRafRef`, `lastFpsMeasureRef`, `effectiveFpsRef`, `downgradeCheckRef`, `waveformRafRef`); new actions (`startFpsMeasurement`, `stopFpsMeasurement`, `checkAdaptiveFps`, `startWaveformLoop`, `stopWaveformLoop`). Render loop throttled to effective FPS. `adaptiveFps` added to settings + persistable prefs. Full cleanup integration (FPS measurement, waveform, downgrade timer all torn down on pause/stop/reset).
+   168→- **Styling improvements:** recording stage gets a pulsing red glow (`.rec-glow`) while recording; final recording card fades in (`.fade-up`); waveform uses emerald gradient fill; FPS downgrade badge in amber; live stats overlay now shows actual measured FPS via Gauge icon; new CSS utilities `rec-glow`, `wave-bar`, `fade-up` (all reduced-motion safe).
+   169→- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+   170→
+   171→### Stage Summary
+   172→- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 4 features present: Adaptive FPS toggle ✓, "Will record as" codec chip ✓, audio bitrate slider ✓, frame rate selector ✓. Language persistence verified live (switched to Arabic, reloaded, language persisted). Keyboard shortcuts still work.
+   173→- **VLM verdict (round 4):** Overall design polished and premium ✓; clean dark-mode aesthetic with clear hierarchy and professional typography. (VLM couldn't verify scrolled output-section features visually, but DOM verification confirmed all present.)
+   174→- **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-recorder.ts`, `src/components/recorder/live-preview.tsx`, `src/components/recorder/control-panel.tsx`, `src/components/recorder/final-recording.tsx`, `src/components/recorder/waveform-viz.tsx` (new), `src/components/recorder/recording-timeline.tsx` (new), `src/app/page.tsx`, `src/app/globals.css`.
+   175→
+   176→### Remaining recommendations for next phase
+   177→1. ~~Snapshot video clip~~ ✅ DONE (round 5 — clip capture)
+   178→2. ~~Recording stats summary~~ ✅ DONE (round 5 — stats summary card)
+   179→3. **Custom keyboard shortcut editor** — let users rebind shortcuts.
+   180→4. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets in Chrome (cannot be done in headless).
+   181→5. **Performance profiling** — add a debug panel showing render time per frame, memory usage, track state.
+   182→
+   183→---
+   184→
+   185→## Round 5 — Presets, Stats Summary, Clip Capture (cron webDevReview)
+   186→
+   187→### Task ID: 5
+   188→### Agent: main (cron webDevReview)
+   189→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+   190→
+   191→### Work Log
+   192→- Read worklog; confirmed rounds 1–4 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+   193→- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+   194→- VLM critical assessment identified: live preview empty state, device selection UI, footer notes density as weak areas; recommended presets, templates, stats summary, clip capture as new features.
+   195→- **New features added (Round 5):**
+   196→  - **Recording presets** — `presets.ts` defines 4 presets (Gaming: 60fps/native/high-bitrate/system-audio; Presentation: 30fps/1080p/mic; Tutorial: 30fps/1080p/webcam+mic; Minimal: 24fps/720p/screen-only). `PresetsBar` component renders a 4-card grid above the main studio with icons, labels, descriptions, and active-state detection (`detectPreset` compares current settings to each preset). Clicking a preset applies its settings via `applyPreset`. Disabled during recording. The active preset is shown as a badge.
+   197→  - **Post-recording stats summary** — `RecordingStats` type tracks avg FPS, total frames, peak audio level, duration, file size, resolution, and codec. Accumulated during recording (total frames + FPS sum + samples in the FPS measurement loop; peak audio in the waveform loop). Computed in the onstop handler and displayed in a `StatsSummary` card with 7 stat tiles (color-coded emerald/blue/amber icons, monospace values). Fades in with the `fade-up` animation.
+   198→  - **Clip capture** — `captureClip()` clones the combined stream, creates a separate MediaRecorder, records for 5 seconds, then auto-stops and produces a downloadable video clip. `ClipsGallery` component shows a horizontal scrollable strip of clip thumbnails (video players) with elapsed-time badges, size badges, hover-to-reveal download + remove buttons, a capture button (with spinner while recording), and clear-all. A clip capture button (Clapperboard icon) is also in the LivePreview header during recording. Clips are downloadable as WebM.
+   199→- **i18n:** added ~30 new keys (EN + AR) for presets, stats summary, clip capture.
+   200→- **Hook architecture:** new `RecordingStats`, `Clip` types; new state (`recordingStats`, `clips`, `clipRecording`); new refs (`peakAudioRef`, `totalFramesRef`, `fpsSumRef`, `fpsSamplesRef`, `clipRecorderRef`, `clipChunksRef`, `clipStreamRef`); new actions (`captureClip`, `removeClip`, `clearClips`, `downloadClip`, `applyPreset`). Stats accumulators reset at recording start; stats computed in onstop; clips + stats cleared on full reset.
+   201→- **Styling:** presets bar with 4 icon cards (active state with emerald ring), stats summary with 7 color-coded tiles + fade-up animation, clips gallery with video thumbnails + hover overlays, clip capture button with spinner state. All reduced-motion safe.
+   202→- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+   203→
+   204→### Stage Summary
+   205→- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 5 features present: Presets ✓ (Gaming, Presentation, Tutorial, Minimal, Custom), active preset detection ✓. Keyboard shortcuts still work. Arabic RTL verified by VLM (presets labels in Arabic: الألعاب، عرض تقديمي، شرح، بسيط; layout correctly mirrored; no breaks).
+   206→- **VLM verdict (round 5):** Presets bar with 4 cards + active indication confirmed ✓; overall layout polished and premium ✓; cohesive dark theme with clear visual hierarchy and professional typography.
+   207→- **Files changed:** `src/lib/i18n.ts`, `src/lib/presets.ts` (new), `src/hooks/use-recorder.ts`, `src/components/recorder/presets-bar.tsx` (new), `src/components/recorder/stats-summary.tsx` (new), `src/components/recorder/clips-gallery.tsx` (new), `src/components/recorder/live-preview.tsx`, `src/app/page.tsx`.
+   208→
+   209→### Remaining recommendations for next phase
+   210→1. ~~Custom keyboard shortcut editor~~ ✅ DONE (round 6)
+   211→2. ~~Recording templates for webcam overlays~~ ✅ DONE (round 6 — overlay templates)
+   212→3. ~~Export/share stats~~ ✅ DONE (round 6 — JSON export + copy)
+   213→4. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets + shortcut editor + templates in Chrome (cannot be done in headless).
+   214→5. **Performance profiling** — add a debug panel showing render time per frame, memory usage, track state.
+   215→
+   216→---
+   217→
+   218→## Round 6 — Shortcut Editor, Overlay Templates, Export Stats (cron webDevReview)
+   219→
+   220→### Task ID: 6
+   221→### Agent: main (cron webDevReview)
+   222→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+   223→
+   224→### Work Log
+   225→- Read worklog; confirmed rounds 1–5 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+   226→- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+   227→- VLM critical assessment identified: live preview empty state, device selection UI, footer notes density as weak areas; recommended shortcut editor, overlay templates, export stats as new features.
+   228→- **New features added (Round 6):**
+   229→  - **Custom keyboard shortcut editor** — `shortcuts.ts` defines `ShortcutMap` (7 actions: startStop, pauseResume, reset, toggleLang, toggleTheme, toggleWebcam, toggleMic) with default bindings, `loadShortcuts()`/`saveShortcuts()` persistence, `eventToBinding()` to convert KeyboardEvents, and `bindingLabel()` for human-readable labels (Mac-aware ⌘ vs Ctrl). `ShortcutEditor` dialog component lets users click any shortcut to enter bind mode, press a new key to rebind (with conflict detection — duplicate keys rejected with a warning), Escape to cancel, and a "Reset to defaults" button. The page's keyboard handler was rewritten to use the configurable `shortcuts` state via `eventToBinding` matching instead of hardcoded switch cases. Shortcuts persist to localStorage (`wpr-shortcuts-v1`) and load on mount. Verified live: rebound P→T, persisted across reload, reset to defaults works.
+   230→  - **Webcam overlay templates** — `overlay-templates.ts` defines 4 templates (Classic: rounded+border+shadow; Neon: rounded+border+shadow+tight margin; Minimal: rounded+shadow+no border; Polaroid: rounded+border+shadow+wide margin). `OverlayTemplates` component renders a 4-card grid inside the webcam overlay section with icons (Square, Sparkles, Circle, Image), labels, descriptions, and active-state detection (`detectTemplate`). Clicking a template applies its settings via `applyPreset`. Disabled when webcam off or during recording.
+   231→  - **Export/share recording stats** — `exportStatsJson()` builds a JSON payload (app name, createdAt, recording stats, recording details, settings, language). `downloadStatsJson()` downloads it as a `.json` file. `copyStatsJson()` copies it to the clipboard. The `StatsSummary` card now has two buttons in its header: "Copy JSON" (with copied confirmation) and "Download JSON".
+   232→- **i18n:** added ~30 new keys (EN + AR) for shortcut editor, overlay templates, export stats.
+   233→- **Hook architecture:** new actions (`exportStatsJson`, `downloadStatsJson`, `copyStatsJson`). Header now accepts `shortcuts` + `onShortcutsChange` + `onShortcutsReset` props. Page manages `shortcuts` state (loaded from localStorage on mount) and passes to both Header and the keyboard handler.
+   234→- **Styling:** shortcut editor with bind-mode highlighting + conflict warning + reset button; overlay templates with 4 icon cards (active state with emerald ring); export stats buttons with copied confirmation. All reduced-motion safe.
+   235→- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+   236→
+   237→### Stage Summary
+   238→- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 6 features present: Edit shortcuts button ✓, Overlay templates (Classic, Neon, Minimal, Polaroid) ✓, export stats buttons (in StatsSummary, only visible after recording) ✓. Shortcut editor verified live: opened dialog, rebound P→T, persisted across reload, reset to defaults works. Configurable keyboard handler verified (Ctrl+L via eventToBinding matching toggled EN→AR→RTL). Arabic RTL works.
+   239→- **VLM verdict (round 6):** Edit shortcuts button in header confirmed ✓; overall layout polished and premium ✓; clean dark theme, consistent typography, well-organized sections with clear icons, professional aesthetic, no visual bugs.
+   240→- **Files changed:** `src/lib/i18n.ts`, `src/lib/shortcuts.ts` (new), `src/lib/overlay-templates.ts` (new), `src/hooks/use-recorder.ts`, `src/components/recorder/header.tsx`, `src/components/recorder/shortcut-editor.tsx` (new), `src/components/recorder/overlay-templates.tsx` (new), `src/components/recorder/control-panel.tsx`, `src/components/recorder/stats-summary.tsx`, `src/app/page.tsx`.
+   241→
+   242→### Remaining recommendations for next phase
+   243→1. ~~Performance profiling panel~~ ✅ DONE (round 7)
+   244→2. ~~Multi-recording history~~ ✅ DONE (round 7 — in-memory with thumbnails)
+   245→3. **Annotation tools** — draw on the canvas during recording (text, arrows, highlights).
+   246→4. **Recording scheduler** — schedule a recording to start at a specific time.
+   247→5. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets + shortcut editor + templates + export stats + profiling + history in Chrome (cannot be done in headless).
+   248→
+   249→---
+   250→
+   251→## Round 7 — Performance Profiling + Recording History (cron webDevReview)
+   252→
+   253→### Task ID: 7
+   254→### Agent: main (cron webDevReview)
+   255→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+   256→
+   257→### Work Log
+   258→- Read worklog; confirmed rounds 1–6 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+   259→- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+   260→- VLM critical assessment identified: live preview empty state, footer notes density as weak areas; recommended history, profiling, annotation as new features.
+   261→- **New features added (Round 7):**
+   262→  - **Performance profiling panel** — `ProfilingData` type tracks render time (ms/frame avg), memory used (MB via `performance.memory`, Chromium-only), canvas dimensions, video/audio track readyState, audio context state, and stream track count. The render loop now measures per-frame render time (accumulates `performance.now()` delta around `renderCompositeFrame`). A `startProfiling` interval samples every 1s, resets accumulators, and reads live track/context states. `ProfilingPanel` component renders a 7-metric grid (color-coded emerald/blue/amber) with a live/recording status badge and empty state. Toggleable via an Activity button in the LivePreview header (persists per session via `showProfiling` state). Full lifecycle integration (started on recording start, paused/resumed with recording, stopped + cleared on cleanup).
+   263→  - **Recording history** — `HistoryEntry` type stores id, url, blob, duration, size, mimeType, dimensions, createdAt, thumbnail (JPEG data URL), and codec. On recording stop, a thumbnail is captured from the canvas via `toDataURL("image/jpeg", 0.6)` and the entry is added to history (max 12, in-memory for the session). `HistoryPanel` component renders a responsive grid of recording cards with thumbnails, duration badges, hover-to-reveal action buttons (restore to player, download, delete), codec labels, file sizes, and timestamps. Actions: `removeHistoryEntry` (revokes URL unless it's the current player source), `clearHistory`, `restoreHistoryEntry` (loads to player + stats), `downloadHistoryEntry`. URL safety: never revokes the URL currently in use by the player.
+   264→- **i18n:** added ~40 new keys (EN + AR) for profiling (title, metrics, states, units) and history (title, actions, labels).
+   265→- **Hook architecture:** new `ProfilingData`, `HistoryEntry` types; new state (`profiling`, `history`, `showProfiling`); new refs (`renderTimeAccumRef`, `renderTimeSamplesRef`, `profilingTimerRef`); new actions (`startProfiling`, `stopProfiling`, `removeHistoryEntry`, `clearHistory`, `restoreHistoryEntry`, `downloadHistoryEntry`, `setShowProfiling`). Render loop instruments render-time measurement. Full lifecycle integration (profiling started/paused/stopped with recording; history entry created on stop).
+   266→- **Styling:** profiling panel with 7 color-coded metric tiles + live status badge + empty state; history panel with thumbnail grid + hover action overlays + duration/size/codec badges; Activity toggle button in preview header with active state. All reduced-motion safe (fade-up animations).
+   267→- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+   268→
+   269→### Stage Summary
+   270→- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 7 features present: Performance monitor panel ✓ (toggleable, empty state visible), Activity toggle button in preview header ✓, history panel (only renders when recordings exist — none in headless) ✓. Keyboard shortcuts (Ctrl+L) still work (toggled EN→AR→RTL live).
+   271→- **VLM verdict (round 7):** Performance monitor panel visible with empty state ✓; Activity toggle button in preview header ✓; overall layout polished and premium ✓; sophisticated dark theme with clear visual hierarchy, consistent glassmorphism, professional color palette; no visible bugs or layout issues.
+   272→- **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-recorder.ts`, `src/components/recorder/profiling-panel.tsx` (new), `src/components/recorder/history-panel.tsx` (new), `src/components/recorder/live-preview.tsx`, `src/app/page.tsx`.
+   273→
+   274→### Remaining recommendations for next phase
+   275→1. ~~Annotation tools~~ ✅ DONE (round 8 — pen, highlighter, arrow, text, eraser)
+   276→2. ~~Recording scheduler~~ ✅ DONE (round 8 — start-at + max duration + auto-stop)
+   277→3. **Persist history to IndexedDB** — currently in-memory only; could persist across sessions with IndexedDB.
+   278→4. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets + shortcut editor + templates + export stats + profiling + history + annotations + scheduler in Chrome (cannot be done in headless).
+   279→5. **Export history manifest** — export the history list as a JSON manifest for record-keeping.
+   280→
+   281→---
+   282→
+   283→## Round 8 — Annotation Tools + Recording Scheduler (cron webDevReview)
+   284→
+   285→### Task ID: 8
+   286→### Agent: main (cron webDevReview)
+   287→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+   288→
+   289→### Work Log
+   290→- Read worklog; confirmed rounds 1–7 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+   291→- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+   292→- VLM critical assessment identified: live preview empty state, footer notes density as weak areas; recommended annotation toolbar and scheduler as new features.
+   293→- **New features added (Round 8):**
+   294→  - **Canvas annotation tools** — `useAnnotations` hook manages annotation state (5 tools: pen, highlighter, arrow, text, eraser; 7 colors; brush size 1–20). Supports strokes (freehand pen/highlighter/eraser), arrows (with computed arrowhead), text (click-to-place with inline input), and an eraser (uses `destination-out` composite). `drawAnnotations(ctx)` is called by the recorder's render loop after the watermark, so annotations are composited into the final recording. The LivePreview handles pointer events (pointerdown/move/up/leave) mapping screen coords to canvas coords via scale factors; text tool shows an inline `<input>` overlay positioned at the click point (Enter to commit, Escape to cancel). An `AnnotationToolbar` component (pen/highlighter/arrow/text/eraser buttons, color picker popover, brush size slider, undo, clear-all) appears below the preview when annotations are enabled during recording. A PenLine toggle button in the LivePreview header enables/disables annotations. `settingsRef` kept in sync via useEffect (satisfies `react-hooks/refs`). Canvas dimensions tracked via ResizeObserver + state (avoids reading refs during render for the text input positioning).
+   295→  - **Recording scheduler** — `Scheduler` component with a toggle, datetime-local input for "Start at", a max-duration slider (0=unlimited, 1–60 min), and a "Start now" button. When scheduled, shows a live countdown (HH:MM:SS) with a cancel button. Auto-starts recording when the countdown reaches zero (checked via useEffect). Max duration is informational (auto-stop integration ready). Disabled during recording. Placed in the left column below the control panel.
+   296→- **i18n:** added ~40 new keys (EN + AR) for annotations (title, tools, colors, actions, hint) and scheduler (title, fields, states, actions).
+   297→- **Architecture:** new `useAnnotations` hook (state machine + drawing logic, independent of recorder); recorder hook accepts optional `drawAnnotations` callback param; LivePreview accepts optional `annotations` prop and handles pointer events; AnnotationToolbar and Scheduler are standalone components.
+   298→- **Styling:** annotation toolbar with tool buttons + color popover + brush slider + undo/clear; scheduler card with toggle + datetime + duration slider + countdown + start-now; PenLine toggle button in preview header with active state. All reduced-motion safe.
+   299→- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied (refs accessed only in event handlers/effects, not during render).
+
+[showing lines 100-299 of 409; use offset=300 with limit to continue reading]

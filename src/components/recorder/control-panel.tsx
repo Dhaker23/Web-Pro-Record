@@ -639,17 +639,38 @@ export function ControlPanel({ rec, lang, t }: Props) {
                       {t("watermarkLogoUpload")}
                       <input
                         type="file"
-                        accept="image/png,image/jpeg,image/svg+xml"
+                        accept="image/png,image/jpeg"
                         className="hidden"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (!file) return;
+                          // SEC-005/006/007 FIX: Validate file type, size, and data URL prefix.
+                          // SVG is blocked because it can contain <script> tags (XSS vector).
+                          const allowedTypes = ["image/png", "image/jpeg", "image/jpg"];
+                          if (!allowedTypes.includes(file.type)) {
+                            rec.setError({ kind: "upload", message: "watermarkLogoError" });
+                            e.target.value = "";
+                            return;
+                          }
+                          // 2 MB limit to prevent localStorage overflow.
+                          if (file.size > 2 * 1024 * 1024) {
+                            rec.setError({ kind: "upload", message: "watermarkLogoError" });
+                            e.target.value = "";
+                            return;
+                          }
                           const reader = new FileReader();
                           reader.onload = () => {
                             const dataUrl = reader.result as string;
+                            // Validate the data URL prefix.
+                            if (!dataUrl.startsWith("data:image/")) {
+                              rec.setError({ kind: "upload", message: "watermarkLogoError" });
+                              return;
+                            }
                             rec.updateSettings("watermarkLogoDataUrl", dataUrl);
                           };
-                          reader.onerror = () => {};
+                          reader.onerror = () => {
+                            rec.setError({ kind: "upload", message: "watermarkLogoError" });
+                          };
                           reader.readAsDataURL(file);
                           e.target.value = "";
                         }}

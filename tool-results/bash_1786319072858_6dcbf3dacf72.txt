@@ -1,0 +1,354 @@
+- **VLM verdict (round 11):** Watermark section with mode dropdown (set to "Logo only") ✓; Upload logo button clearly visible ✓; overall layout very polished and premium ✓; dark theme, consistent spacing, modern UI components, clear typography; no visible bugs or layout issues.
+- **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-recorder.ts`, `src/components/recorder/control-panel.tsx`, `src/components/recorder/annotation-toolbar.tsx`.
+
+### Remaining recommendations for next phase
+1. **Persist history to IndexedDB** — currently in-memory only; could persist across sessions with IndexedDB.
+2. **Recording format conversion** — client-side WebM→MP4 conversion (if feasible without backend).
+3. **Manual real-browser recording validation** — test the full workflow in Chrome (cannot be done in headless).
+4. **Custom UI accent color** — let users change the app's accent color (currently emerald).
+5. **Recording templates manager** — save/load custom recording configurations as named profiles.
+
+---
+
+## Round 12 — Security Audit (SEC-1)
+
+### Task ID: SEC-1
+### Agent: Security Auditor
+### Task: Application security audit of Web Pro Record — secrets scan, XSS, input validation, localStorage, dependencies, file upload, CSP/headers, media API, git, code injection.
+
+### Scope & Methodology
+Audited the full repo under `/home/z/my-project` (8,094 LOC across `src/components/recorder/`, `src/hooks/`, `src/lib/`, `src/app/`) plus deployment files (`next.config.ts`, `Caddyfile`, `package.json`, `examples/`, `upload/`). Ran `bun audit` (80 vulnerabilities), `git ls-files` for sensitive-file tracking, and grep-based scans for secret patterns, XSS sinks (`dangerouslySetInnerHTML`, `innerHTML`, `eval`, `new Function`, `document.write`, string-arg `setTimeout`), localStorage usage, `FileReader`/`URL.createObjectURL`, and media-stream lifecycle.
+
+### Executive Summary
+The recorder **core (client-side media logic) is well-built and safe** — no `eval`, no string-arg `setTimeout`, no `innerHTML`, all canvas text drawn via `ctx.fillText` (XSS-safe), all media streams properly stopped in `cleanupMedia()`/`cleanupAll()`, all object URLs revoked. **No hardcoded secrets** were found. The `.env` is **not** git-tracked (`.gitignore:34` correctly excludes `.env*`).
+
+However, there are **20 findings** spanning deployment config (CRITICAL open reverse-proxy in `Caddyfile`), missing CSP, vulnerable dependencies (1 critical + 42 high), missing file-upload validation (SVG XSS footgun), and missing localStorage schema validation. **No fixes were applied** per task scope — this is a report only.
+
+### Findings (20 total: 1 CRITICAL, 3 HIGH, 9 MEDIUM, 4 LOW, 3 INFO)
+
+---
+
+#### SEC-001 — CRITICAL — Caddyfile open reverse-proxy (SSRF)
+- **File:** `Caddyfile:6-13`
+- **Problem:** The Caddyfile accepts any request with query parameter `?XTransformPort=<port>` and reverse-proxies it to `localhost:<port>`. An external attacker can craft URLs like `https://<deployed-host>/?XTransformPort=5432` to reach PostgreSQL, `XTransformPort=6379` for Redis, `XTransformPort=9000` for PHP-FPM, internal admin panels, the Prisma SQLite RPC, metadata services, etc. — any TCP listener on the host.
+- **Root cause:** The `@transform_port_query` matcher + `reverse_proxy localhost:{query.XTransformPort}` block trusts a user-controlled query parameter as the upstream target with no allowlist.
+- **Impact:** Full SSRF — attackers can pivot into every local service, exfiltrate database contents, hit cloud-metadata endpoints (169.254.169.254), scan internal network, bypass firewalls. This is the single most severe finding in the audit, and it is in the deployment config that ships with the repo.
+- **Recommended fix:** Remove the dynamic-port block entirely, or replace it with an explicit allowlist (e.g. `:3000`, `:3003` only). At minimum, restrict to known safe ports:
+  ```caddyfile
+  @allowed_port query XTransformPort=3000
+  query XTransformPort=3003
+  handle @allowed_port { reverse_proxy localhost:{query.XTransformPort} }
+  ```
+
+---
+
+#### SEC-002 — HIGH — No Content-Security-Policy or security headers
+- **File:** `next.config.ts:3-10`
+- **Problem:** `next.config.ts` defines only `output: "standalone"`, `typescript.ignoreBuildErrors`, and `reactStrictMode: false`. There is **no `headers()` configuration**, so the deployed app ships with **no** `Content-Security-Policy`, no `X-Frame-Options`/`frame-ancestors`, no `X-Content-Type-Options: nosniff`, no `Referrer-Policy`, no `Permissions-Policy`. The app calls `getDisplayMedia`/`getUserMedia` — without a `Permissions-Policy` that explicitly allows them only on this origin, third-party iframes/ embedders can attempt to frame the page and request camera/mic/screen.
+- **Root cause:** Default Next.js config doesn't add security headers; developer must opt in.
+- **Impact:** (1) If any XSS is ever introduced (now or by a future dependency), there is no CSP to contain it. (2) Clickjacking — page can be iframed by attackers. (3) MIME-sniffing attacks. (4) Permission prompts can be triggered from framed contexts.
+- **Recommended fix:** Add a `headers()` block to `next.config.ts`:
+  ```ts
+  const nextConfig: NextConfig = {
+    async headers() {
+      return [{
+        source: "/(.*)",
+        headers: [
+          { key: "Content-Security-Policy",
+            value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy",
+            value: "camera=(self), microphone=(self), display-capture=(self), geolocation=(), clipboard-write=(self)" },
+        ],
+      }];
+    },
+  };
+  ```
+
+---
+
+#### SEC-003 — HIGH — 80 dependency vulnerabilities (1 critical, 42 high)
+- **File:** `package.json`, `bun.lock`
+- **Problem:** `bun audit` reports **80 vulnerabilities** (1 critical, 42 high, 32 moderate, 5 low). Highlights:
+  - **CRITICAL** `next-auth` >=4.0.6 <=4.24.14 — Email normalizer validates address before Unicode normalization, allowing homoglyph `@` bypass (GHSA-7rqj-j65f-68wh).
+  - **HIGH** `next` >=16.0.0 <16.2.5 — 30+ advisories incl. SSRF in rewrites/Server Actions, middleware/proxy bypasses, XSS with CSP nonces, DoS via Server Components/Actions, Image Optimization DoS via SVG.
+  - **HIGH** `sharp` <0.35.0 — libvips inherited vulnerabilities (GHSA-f88m-g3jw-g9cj).
+  - **HIGH** `next-intl` <4.9.1 — open redirect + prototype pollution via precompiled messages.
+  - **HIGH** `lodash` (via recharts) — Code Injection via `_.template` (GHSA-r5fr-rjxr-66jc) + Prototype Pollution in `_.unset`/`_.omit`.
+  - **HIGH** `defu` (via prisma) — Prototype pollution via `__proto__` (GHSA-737v-mqg7-c878).
+  - **HIGH** `brace-expansion`, `minimatch`, `picomatch`, `flatted`, `nanoid`, `js-cookie`, `js-yaml`, `prismjs` — various DoS/prototype-pollution/XSS.
+- **Root cause:** Pinned dependency ranges are out-of-date; many are inherited transitively.
+- **Impact:** For a fully client-side app, most server-side Next.js vulns are not exploitable in production, but: (a) the repo contains `src/app/api/route.ts`, `src/lib/db.ts`, `examples/websocket/server.ts` — so server-side vulns DO matter if those run. (b) `lodash` ships in the client bundle via `recharts` (which isn't used by the recorder UI). (c) `next-auth` ships with a critical email-bypass vuln even if unused. (d) Dev-time `eslint`/`typescript-eslint` ReDoS vulns could slow CI.
+- **Recommended fix:** Run `bun update --latest` to bump major versions, then `bun audit` again. Remove unused deps: `next-auth`, `@prisma/client`, `prisma`, `next-intl`, `@mdxeditor/editor`, `react-syntax-highlighter`, `recharts`, `sharp`, `z-ai-web-dev-sdk`, `@tanstack/react-query`, `@tanstack/react-table`, `react-hook-form`, `react-markdown`, `uuid`, `next-themes` (keep if used). For a screen recorder, almost none of these are needed.
+
+---
+
+#### SEC-004 — HIGH — `next.config.ts` disables build-time safety
+- **File:** `next.config.ts:7-9`
+- **Problem:**
+  ```ts
+  typescript: { ignoreBuildErrors: true },
+  reactStrictMode: false,
+  ```
+  `ignoreBuildErrors: true` makes `next build` succeed even when `tsc` reports type errors. Type errors frequently hide security bugs (e.g., treating a `string` as a `number`, or assuming a value is non-null). `reactStrictMode: false` disables React's dev-mode checks for unsafe lifecycles and double-invoked effects.
+- **Root cause:** Likely set to ship despite TypeScript errors during initial development.
+- **Impact:** Type-unsafe code can reach production, masking security vulnerabilities and contract violations.
+- **Recommended fix:** Remove `typescript.ignoreBuildErrors` (default is `false`) and fix any outstanding TS errors. Re-enable `reactStrictMode: true`.
+
+---
+
+#### SEC-005 — MEDIUM — Watermark logo upload accepts SVG (script-injection footgun)
+- **File:** `src/components/recorder/control-panel.tsx:642`
+- **Problem:**
+  ```tsx
+  <input type="file" accept="image/png,image/jpeg,image/svg+xml" ... />
+  ```
+  SVG files can contain `<script>` tags and event handlers (`onload`, `onerror`). The uploaded file is read via `FileReader.readAsDataURL` (`control-panel.tsx:653`) and stored as `watermarkLogoDataUrl`. Currently the data URL is consumed in two XSS-safe ways: (1) `<img src={dataUrl}>` at `control-panel.tsx:675` (img tags don't execute SVG scripts), and (2) `new Image()` + `ctx.drawImage()` at `use-recorder.ts:368,730` (canvas drawImage doesn't execute scripts either). **Today this is safe**, but it is a footgun — any future code path that renders the data URL via `<embed>`, `<object>`, `<iframe>`, `<a target=_blank href={dataUrl}>`, `fetch(dataUrl).then(r => r.text())` then `innerHTML`, or top-level navigation would execute attacker-controlled script in the app origin.
+- **Root cause:** SVG is included in the accept list without a clear need (the watermark feature wants raster logos).
+- **Impact:** Latent XSS — depends on future code changes. Also, SVGs can carry XXE payloads that affect some parsers (not the browser's `<img>` loader, but defense-in-depth is wise).
+- **Recommended fix:** Drop SVG from the accept list:
+  ```tsx
+  accept="image/png,image/jpeg,image/webp"
+  ```
+  And validate the data URL prefix in the `onload` handler:
+  ```ts
+  reader.onload = () => {
+    const dataUrl = reader.result as string;
+    if (!/^data:image\/(png|jpeg|webp);base64,/.test(dataUrl)) return;
+    if (dataUrl.length > 1_500_000) { toast({ description: "Logo too large (max 1 MB)" }); return; }
+    rec.updateSettings("watermarkLogoDataUrl", dataUrl);
+  };
+  ```
+
+---
+
+#### SEC-006 — MEDIUM — Watermark logo data URL not validated
+- **File:** `src/components/recorder/control-panel.tsx:644-655`
+- **Problem:** The file upload handler unconditionally writes `reader.result` into `settings.watermarkLogoDataUrl`. There is no MIME validation, no size limit, no prefix check. If `FileReader` ever returns an unexpected string (or if a malicious localStorage injection plants a `data:text/html,...` URL — see SEC-008), the value will be set as the logo src and rendered by `<img>` and `drawImage`.
+- **Root cause:** Missing input validation.
+- **Impact:** A crafted data URL (e.g., `data:text/html;base64,...` or `data:image/svg+xml,...`) would be accepted. While `<img>` won't execute scripts in HTML/SVG data URLs, accepting non-image types is incorrect and fragile.
+- **Recommended fix:** Add the validation snippet shown in SEC-005.
+
+---
+
+#### SEC-007 — MEDIUM — Watermark logo upload has no file-size limit
+- **File:** `src/components/recorder/control-panel.tsx:644-655`
+- **Problem:** No `file.size` check before `readAsDataURL`. A 50 MB image will be read fully into memory, base64-encoded (→ ~67 MB string), stored in React state, and rendered in the watermark `<img>` preview on every render. If the user toggles the logo off and back on, this is repeated. Even though `watermarkLogoDataUrl` is intentionally NOT persisted (good — noted at `use-recorder.ts:136` comment), it lives in memory until cleared.
+- **Root cause:** No size guard.
+- **Impact:** Browser memory exhaustion / tab crash if user uploads a huge file; UX degradation.
+- **Recommended fix:** Add `if (file.size > 1_000_000) { toast({ description: "Logo too large (max 1 MB)" }); return; }` before reading.
+
+---
+
+#### SEC-008 — MEDIUM — localStorage prefs JSON.parse has no schema validation
+- **File:** `src/hooks/use-recorder.ts:195-206, 353-357`
+- **Problem:**
+  ```ts
+  function loadPrefs(): Partial<PersistablePrefs> | null {
+    const raw = window.localStorage.getItem(PREF_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed as Partial<PersistablePrefs>;   // ← no field-type validation
+  }
+  // ...
+  const prefs = loadPrefs();
+  if (prefs) {
+    setSettings((prev) => ({ ...prev, ...prefs }));   // ← blind spread
+  }
+  ```
+  Any value (correct type, wrong type, extra fields, malicious `__proto__`-like keys) is accepted and spread over `DEFAULT_SETTINGS`. Downstream consumers assume typed fields:
+  - `drawWatermark` at `use-recorder.ts:702` calls `s.watermarkText?.trim()` — crashes if `watermarkText` is a number.
+  - `Math.round(h * s.watermarkLogoSize)` at `:712,723` returns `NaN` if `watermarkLogoSize` is a string.
+  - Slider components receive non-number values and may render NaN.
+  A malicious script on the same origin (e.g., via an XSS in a future dependency, or another app hosted on the same origin) could plant `localStorage.setItem("wpr-prefs-v1", JSON.stringify({watermarkText: 12345, quality: "4320", frameRate: "999"}))` to crash the recorder on next load — a persistent client-side DoS.
+- **Root cause:** `JSON.parse` + bare cast without runtime validation.
+- **Impact:** Persistent client-side DoS via crafted localStorage; potential crashes if attackers can write to localStorage.
+- **Recommended fix:** Validate each field by type and range before merging, e.g.:
+  ```ts
+  function loadPrefs(): Partial<PersistablePrefs> | null {
+    try {
+      const raw = window.localStorage.getItem(PREF_KEY);
+      if (!raw) return null;
+      const p = JSON.parse(raw);
+      if (!p || typeof p !== "object" || Array.isArray(p)) return null;
+      const out: Partial<PersistablePrefs> = {};
+      if (typeof p.watermarkText === "string") out.watermarkText = p.watermarkText.slice(0, 200);
+      if (typeof p.watermarkOpacity === "number") out.watermarkOpacity = clamp(p.watermarkOpacity, 0.1, 1);
+      if (typeof p.watermarkSize === "number") out.watermarkSize = clamp(p.watermarkSize, 0.01, 0.06);
+      if (typeof p.watermarkLogoSize === "number") out.watermarkLogoSize = clamp(p.watermarkLogoSize, 0.02, 0.15);
+      if (["text","logo","both"].includes(p.watermarkMode)) out.watermarkMode = p.watermarkMode;
+      if (["720","1080","1440","native"].includes(p.quality)) out.quality = p.quality;
+      if (["24","30","60"].includes(p.frameRate)) out.frameRate = p.frameRate;
+      // ... and so on for each persistable field
+      return out;
+    } catch { return null; }
+  }
+  ```
+
+---
+
+#### SEC-009 — MEDIUM — `shortcuts.ts` localStorage merge accepts unvalidated combos
+- **File:** `src/lib/shortcuts.ts:41-52`
+- **Problem:**
+  ```ts
+  const parsed = JSON.parse(raw) as Partial<ShortcutMap>;
+  return { ...DEFAULT_SHORTCUTS, ...parsed } as ShortcutMap;
+  ```
+  No validation that `parsed[action].combo` is a valid `KeyboardEvent.code` and `parsed[action].mod` is a boolean. A malicious localStorage payload could set `combo: ""` (disables the shortcut) or `combo: "KeyA"` colliding with another action (causing ambiguous behavior). The bare cast trusts the stored shape entirely.
+- **Root cause:** Missing shape validation; the cast `as ShortcutMap` lies to TypeScript.
+- **Impact:** A same-origin attacker can disable or hijack keyboard shortcuts (e.g., unbinding the stop shortcut to make the user record indefinitely). Not a script-execution vector, but a UX/integrity issue.
+- **Recommended fix:** Validate each entry: `typeof v.combo === "string" && /^[A-Za-z0-9]+$/.test(v.combo) && typeof v.mod === "boolean"`.
+
+---
+
+#### SEC-010 — MEDIUM — Unnecessary backend/AI deps for a "no backend" client-side app
+- **File:** `package.json:15-82`
+- **Problem:** The project README and worklog describe it as "fully client-side, no backend, no AI APIs, no uploads." Yet `package.json` lists: `next-auth` (auth backend), `@prisma/client` + `prisma` (DB ORM), `next-intl` (server i18n), `@mdxeditor/editor` (rich text), `react-syntax-highlighter` + `prismjs` (code highlighter), `recharts` (charts, pulls in `lodash`), `sharp` (image processing — server only), `z-ai-web-dev-sdk` (AI client), `@tanstack/react-query` + `react-table`, `react-hook-form`, `react-markdown`, `uuid`. The repo also contains `src/lib/db.ts` (Prisma client), `src/app/api/route.ts` (an HTTP endpoint), `examples/websocket/server.ts` (Socket.IO server) — contradicting the "no backend" claim.
+- **Root cause:** Project scaffolded from a full Next.js starter (nextjs_tailwind_shadcn_ts) and never trimmed.
+- **Impact:** (a) Massive unnecessary attack surface — the critical `next-auth` vuln (SEC-003) only matters because `next-auth` is installed. (b) Larger client bundle → slower load → more code to audit. (c) Misleading security posture — auditors/operators may falsely assume the deployment has no server attack surface.
+- **Recommended fix:** Trim dependencies to only what the recorder actually imports (`next`, `react`, `react-dom`, `lucide-react`, `next-themes`, `tailwind-merge`, `clsx`, `class-variance-authority`, `@radix-ui/*`, `sonner`, `tailwindcss`, `tw-animate-css`). Delete `src/lib/db.ts`, `src/app/api/route.ts`, `prisma/`, `examples/`. Run `bun audit` again — count should drop dramatically.
+
+---
+
+#### SEC-011 — MEDIUM — `examples/websocket/server.ts` has `cors: { origin: "*" }`
+- **File:** `examples/websocket/server.ts:8-11`
+- **Problem:**
+  ```ts
+  const io = new Server(httpServer, {
+    path: '/',
+    cors: { origin: "*", methods: ["GET", "POST"] },
+  ```
+  Socket.IO server allows any origin. Combined with the Caddyfile open proxy (SEC-001), this is doubly exploitable.
+- **Root cause:** Demo file left with permissive CORS for ease of testing.
+- **Impact:** If this example server is ever run in production, any website can connect to the Socket.IO endpoint and send/receive messages — including the `test` event that echoes back attacker-supplied data (`server.ts:53-60`).
+- **Recommended fix:** Restrict to specific origins: `cors: { origin: ["http://localhost:3000"] }`. Better: delete `examples/` since the recorder doesn't use WebSockets.
+
+---
+
+#### SEC-012 — MEDIUM — `upload/` directory git-tracked but not gitignored
+- **File:** `upload/pasted_image_1786245044623.png` (200 KB, committed), `.gitignore` (no `upload/` entry)
+- **Problem:** `git ls-files` confirms `upload/pasted_image_1786245044623.png` is tracked. The `.gitignore` excludes `/db/*.db`, `qa-*.png`, `*.log`, `dev.log`, but NOT `upload/`. This means future pasted/uploaded files will be committed accidentally. Even though this specific PNG appears to be a screenshot, the pattern invites leakage of sensitive screenshots (e.g., a screenshot containing API tokens, env vars, or PII).
+- **Root cause:** Missing `.gitignore` entry.
+- **Impact:** Risk of accidentally committing sensitive files in the future.
+- **Recommended fix:** Add `/upload/` and `/tool-results/` to `.gitignore`, and `git rm --cached upload/pasted_image_1786245044623.png`.
+
+---
+
+#### SEC-013 — LOW — Watermark text input has no `maxLength`
+- **File:** `src/components/recorder/control-panel.tsx:562-568`
+- **Problem:** The `<Input>` for `watermarkText` has no `maxLength` attribute. A user (or localStorage injection — see SEC-008) could set a multi-KB string. The value is persisted to localStorage (where it could blow the 5 MB quota) and rendered via `ctx.fillText` on every composite frame (perf cost during 60 FPS recording).
+- **Root cause:** No length guard.
+- **Impact:** localStorage quota exhaustion; minor perf hit during recording.
+- **Recommended fix:** Add `maxLength={80}` to the input. Also clamp in `loadPrefs()`.
+
+---
+
+#### SEC-014 — LOW — Annotation text input has no `maxLength`
+- **File:** `src/components/recorder/live-preview.tsx:503-523`
+- **Problem:** The annotation text `<input>` (rendered when the text tool is active) has no `maxLength`. The value is committed via `annotations.commitText(textInput.value)` and drawn via `ctx.fillText` at `use-annotations.ts:204`. Imported annotation JSON (`importFromFile` at `use-annotations.ts:271`) also doesn't bound text length per stroke.
+- **Root cause:** No length guard.
+- **Impact:** A user pasting a 1 MB string into the annotation input would degrade canvas render perf during recording. Imported JSON could carry huge text strokes.
+- **Recommended fix:** Add `maxLength={500}` to the input. In `importJson`, validate `typeof st.text === "string" && st.text.length < 1000`.
+
+---
+
+#### SEC-015 — LOW — `reader.onerror = () => {}` silently swallows upload errors
+- **File:** `src/components/recorder/control-panel.tsx:652`
+- **Problem:** The FileReader error handler is empty. If a file read fails (e.g., browser blocks reading a sandboxed file, or the file is corrupt), the user gets no feedback — the logo simply doesn't appear, and they may conclude the feature is broken.
+- **Root cause:** Placeholder handler never implemented.
+- **Impact:** Poor UX; could mask a security control blocking a malicious file.
+- **Recommended fix:** `reader.onerror = () => toast({ description: t("watermarkLogoError") });` (an i18n key already exists at i18n.ts).
+
+---
+
+#### SEC-016 — LOW — Scheduler `startAt` parsed without bounds validation
+- **File:** `src/components/recorder/scheduler.tsx:50, 71-76`
+- **Problem:** `new Date(startAt).getTime()` is computed from a user-controlled `<input type="datetime-local">` value. While the browser constrains the input format, a programmatic value (or a malformed localStorage value in the future) could produce `NaN` (e.g., `new Date("garbage").getTime()`). The code does `if (Date.now() >= target && canStart)` — when `target` is `NaN`, the comparison is `false`, so it silently never fires. Cosmetic, but worth a guard.
+- **Root cause:** No `Number.isFinite(target)` check.
+- **Impact:** Scheduler silently fails to fire on malformed input; user confused.
+- **Recommended fix:** `if (!Number.isFinite(target)) return;` early in the auto-start effect.
+
+---
+
+#### SEC-017 — LOW — `examples/websocket/frontend.tsx` connects without TLS verification
+- **File:** `examples/websocket/frontend.tsx:36-43`
+- **Problem:** `io('/?XTransformPort=3003', { transports: ['websocket', 'polling'] })` — the client uses polling fallback, which exposes the `XTransformPort` query parameter in HTTP request URLs (visible in logs). Combined with SEC-001, this is part of the open-proxy pattern.
+- **Root cause:** Demo code using the project's Caddy convention.
+- **Impact:** Logs leak the internal port mapping; minor info disclosure.
+- **Recommended fix:** Delete `examples/` directory.
+
+---
+
+#### SEC-018 — INFO — `dangerouslySetInnerHTML` in shadcn `chart.tsx` (not used)
+- **File:** `src/components/ui/chart.tsx:83`
+- **Problem:** The shadcn/ui `ChartStyle` component uses `dangerouslySetInnerHTML` to inject CSS into a `<style>` tag. Content is built from `THEMES` constants and `config.color`/`config.theme` from the consuming chart.
+- **Root cause:** Standard shadcn/ui chart implementation.
+- **Impact:** None currently — the recorder app does **not** import `chart.tsx` (grep confirms no `Chart` imports in `src/components/recorder/`). If a chart is later added with attacker-controlled color values, it would be a CSS-injection vector (not script execution — `<style>` doesn't run JS, but could exfiltrate via CSS `url()`).
+- **Recommended fix:** None required now. If charts are added, sanitize color values with `/^#[0-9a-fA-F]{3,8}$/.test(color)` or use CSS custom properties instead of `dangerouslySetInnerHTML`.
+
+---
+
+#### SEC-019 — INFO — Good practices observed (positive findings)
+The following security-positive patterns were verified:
+- **No `eval()`, `new Function()`, `document.write()`** anywhere in `src/` (grep returned no matches).
+- **No string-argument `setTimeout`/`setInterval`** — all 12 timer calls use function callbacks (`grep` confirmed).
+- **No `innerHTML`/`outerHTML`/`insertAdjacentHTML`** in `src/` (the single `dangerouslySetInnerHTML` is the shadcn chart, SEC-018).
+- **All canvas text** (watermark at `use-recorder.ts:715-716`, annotation text at `use-annotations.ts:204`, idle-preview labels at `use-recorder.ts:1019,1022`) is rendered via `ctx.fillText`/`ctx.strokeText` — **XSS-safe** because canvas draws pixels, not DOM. Even `<script>` tags in watermark/annotation text would render as literal characters.
+- **Media streams properly stopped**: `stopStream()` at `use-recorder.ts:465-474` calls `tr.stop()` on every track in a try/catch. `cleanupMedia()` (477-563) stops screen/webcam/mic/combined streams, closes AudioContext, detaches `srcObject`, exits PiP, clears all RAFs/intervals. `cleanupAll()` (566-591) additionally revokes the result URL. **Unmount cleanup** at `:2024-2028` runs `cleanupAll()` once. Good lifecycle hygiene.
+- **Object URLs revoked**: All 11 `URL.createObjectURL` calls have matching `URL.revokeObjectURL` (verified at lines 569, 586, 1317, 1324, 1352, 1362, 1375, 1664, 1851, 1942, 1988). No memory-leak pattern.
+- **Secure context check**: `detectFeatures()` at `recorder-utils.ts:114` records `window.isSecureContext` — though the app doesn't currently block on it, the awareness is there.
+- **No hardcoded secrets**: Comprehensive grep for `ghp_`, `sk_`, `Bearer`, `password`, `secret`, `token`, `apiKey`, `API_KEY`, `BEGIN PRIVATE KEY`, `aws_secret`, `AKIA…`, `xox…`, `gho_`, `ghu_`, `github_pat_`, `AIza…` returned **zero matches** in tracked files.
+- **`.env` not git-tracked**: `.gitignore:34` excludes `.env*`. `git ls-files` confirms `.env` (containing only `DATABASE_URL=file:/home/z/my-project/db/custom.db`) is NOT committed.
+- **Annotation import validation**: `use-annotations.ts:250-268` wraps `JSON.parse` in try/catch and validates each stroke's shape (`tool`, `color`, `size`, `points` types). Good defensive parsing.
+- **Toast/clipboard**: `copyTechnicalDetails`, `copyStatsJson`, `copyManifest` use `navigator.clipboard.writeText` — safe (no `execCommand`). All clipboard writes are wrapped in try/catch.
+- **No `target="_blank"` without `rel="noopener"`** issues found (no programmatic `window.open` calls).
+
+---
+
+#### SEC-020 — INFO — Canvas text rendering is XSS-safe (positive answer to task Q2)
+The task specifically asked: "The app uses `dangerouslySetInnerHTML`? Check the annotation text tool (user types text that gets drawn on canvas — is this safe?). Check the watermark text input. Check any `innerHTML` usage."
+**Answer:** Yes, all three are safe.
+- **Annotation text**: User types into an `<input>` (`live-preview.tsx:503-523`) → committed via `annotations.commitText()` → stored as `stroke.text` (string) → drawn via `ctx.fillText(stroke.text, ...)` at `use-annotations.ts:204`. Canvas renders text as pixels; no DOM, no HTML parsing, no script execution. **Safe.**
+- **Watermark text**: User types into an `<input>` (`control-panel.tsx:562-568`) → stored as `settings.watermarkText` (string) → drawn via `ctx.fillText`/`ctx.strokeText` at `use-recorder.ts:715-716`. **Safe.**
+- **`innerHTML` usage**: Zero matches in `src/` (only the shadcn `chart.tsx` `dangerouslySetInnerHTML` at SEC-018, which is not used by the recorder).
+
+### Summary Table
+
+| ID | Severity | File:Line | Issue |
+|----|----------|-----------|-------|
+| SEC-001 | CRITICAL | Caddyfile:6-13 | Open reverse-proxy SSRF via `?XTransformPort=` |
+| SEC-002 | HIGH | next.config.ts:3-10 | No CSP / no security headers |
+| SEC-003 | HIGH | package.json | 80 dep vulnerabilities (1 critical, 42 high) |
+| SEC-004 | HIGH | next.config.ts:7-9 | `ignoreBuildErrors: true`, `reactStrictMode: false` |
+| SEC-005 | MEDIUM | control-panel.tsx:642 | Logo upload accepts SVG (XSS footgun) |
+| SEC-006 | MEDIUM | control-panel.tsx:644-655 | Logo data URL not validated |
+| SEC-007 | MEDIUM | control-panel.tsx:644-655 | No file-size limit on logo upload |
+| SEC-008 | MEDIUM | use-recorder.ts:195-206,353-357 | localStorage prefs: no schema validation |
+| SEC-009 | MEDIUM | shortcuts.ts:41-52 | localStorage shortcuts: unvalidated combos |
+| SEC-010 | MEDIUM | package.json | Unnecessary backend/AI deps for "no backend" app |
+| SEC-011 | MEDIUM | examples/websocket/server.ts:8-11 | Socket.IO `cors: origin: "*"` |
+| SEC-012 | MEDIUM | upload/, .gitignore | `upload/` not gitignored; PNG tracked |
+| SEC-013 | LOW | control-panel.tsx:562-568 | Watermark text input no `maxLength` |
+| SEC-014 | LOW | live-preview.tsx:503-523 | Annotation text input no `maxLength` |
+| SEC-015 | LOW | control-panel.tsx:652 | FileReader onerror silently swallowed |
+| SEC-016 | LOW | scheduler.tsx:50,71-76 | `startAt` not `Number.isFinite` checked |
+| SEC-017 | LOW | examples/websocket/frontend.tsx:36-43 | Polling fallback leaks XTransformPort in logs |
+| SEC-018 | INFO | chart.tsx:83 | shadcn `dangerouslySetInnerHTML` (unused) |
+| SEC-019 | INFO | src/ (multiple) | Good practices: no eval, streams stopped, URLs revoked, no secrets |
+| SEC-020 | INFO | use-annotations.ts:204, use-recorder.ts:715-716 | Canvas text rendering is XSS-safe |
+
+### Recommended Next Actions (priority order)
+1. **Fix SEC-001 first** — remove or allowlist the `XTransformPort` block in `Caddyfile`. This is the only CRITICAL and is remotely exploitable as soon as the app is deployed with the bundled Caddyfile.
+2. **Add security headers (SEC-002)** — single-file change to `next.config.ts`, large defense-in-depth win.
+3. **Run `bun update --latest` (SEC-003)** and remove unused deps (SEC-010) — shrinks attack surface dramatically.
+4. **Re-enable type safety (SEC-004)** — set `ignoreBuildErrors: false`, `reactStrictMode: true`, fix any TS errors.
+5. **Harden file upload (SEC-005, SEC-006, SEC-007)** — drop SVG, validate data URL prefix, add 1 MB size limit.
+6. **Validate localStorage (SEC-008, SEC-009)** — add field-by-field type/range validation in `loadPrefs()` and `loadShortcuts()`.
+7. **Cleanup repo (SEC-011, SEC-012, SEC-017)** — delete `examples/`, gitignore `upload/` + `tool-results/`, untrack the PNG.
+8. **Minor polish (SEC-013, SEC-014, SEC-015, SEC-016)** — `maxLength`, error toasts, finite-time guard.
+
+### No fixes applied
+Per task scope ("Do NOT fix anything — just report findings"), no source files were modified. Only this worklog entry was appended.

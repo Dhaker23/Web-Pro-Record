@@ -198,8 +198,27 @@ function loadPrefs(): Partial<PersistablePrefs> | null {
     const raw = window.localStorage.getItem(PREF_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return null;
-    return parsed as Partial<PersistablePrefs>;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    // SEC-008 FIX: Validate each key's type before accepting it.
+    // This prevents malicious localStorage values from corrupting state.
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      // Only accept known keys with matching primitive types.
+      const defaultVal = DEFAULT_SETTINGS[key as keyof RecorderSettings];
+      if (defaultVal === undefined) continue; // unknown key — skip
+      if (typeof defaultVal === "boolean" && typeof value === "boolean") {
+        result[key] = value;
+      } else if (typeof defaultVal === "number" && typeof value === "number" && isFinite(value)) {
+        result[key] = value;
+      } else if (typeof defaultVal === "string" && typeof value === "string") {
+        result[key] = value.slice(0, 1000); // cap string length
+      }
+      // watermarkMode is a union type — validate against allowed values
+      if (key === "watermarkMode" && (value === "text" || value === "logo" || value === "both")) {
+        result[key] = value;
+      }
+    }
+    return result as Partial<PersistablePrefs>;
   } catch {
     return null;
   }
@@ -338,6 +357,9 @@ export function useRecorder(
   const renderTimeAccumRef = useRef<number>(0);
   const renderTimeSamplesRef = useRef<number>(0);
   const profilingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // CODE-005 FIX: Track countdown timeout so cancelCountdown can clear it.
+  const countdownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownResolveRef = useRef<(() => void) | null>(null);
   // Round 11: watermark logo image element (loaded from data URL)
   const watermarkLogoImgRef = useRef<HTMLImageElement | null>(null);
   const watermarkLogoReadyRef = useRef<boolean>(false);
@@ -627,6 +649,12 @@ export function useRecorder(
         audio: false,
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      // CODE-001 FIX: Stop any previous webcam stream before replacing it.
+      // Without this, the old MediaStream is orphaned (camera LED stays lit,
+      // tracks keep flowing, memory leaks until page unload).
+      if (webcamStreamRef.current && webcamStreamRef.current !== stream) {
+        stopStream(webcamStreamRef.current);
+      }
       // If no device was selected, capture the actual deviceId now.
       const track = stream.getVideoTracks()[0];
       if (track) {
@@ -1191,15 +1219,19 @@ export function useRecorder(
         setCountdownValue(seconds);
         setStatus("countdown");
         let remaining = seconds;
+        // CODE-005 FIX: Store resolve + timeout so cancelCountdown can abort.
+        countdownResolveRef.current = resolve;
         const tick = () => {
           setCountdownValue(remaining);
           if (remaining <= 0) {
             setCountdownValue(null);
+            countdownTimeoutRef.current = null;
+            countdownResolveRef.current = null;
             resolve();
             return;
           }
           remaining -= 1;
-          setTimeout(tick, 1000);
+          countdownTimeoutRef.current = setTimeout(tick, 1000);
         };
         tick();
       }),
@@ -1863,6 +1895,16 @@ export function useRecorder(
   }, [startIdlePreviewLoop]);
 
   const cancelCountdown = useCallback(() => {
+    // CODE-005 FIX: Clear the pending timeout and resolve the promise so
+    // startRecording's `await runCountdown(...)` doesn't hang.
+    if (countdownTimeoutRef.current) {
+      clearTimeout(countdownTimeoutRef.current);
+      countdownTimeoutRef.current = null;
+    }
+    if (countdownResolveRef.current) {
+      countdownResolveRef.current();
+      countdownResolveRef.current = null;
+    }
     setCountdownValue(null);
     setStatus("idle");
   }, []);

@@ -43,9 +43,26 @@ export function loadShortcuts(): ShortcutMap {
   try {
     const raw = window.localStorage.getItem(SHORTCUT_KEY);
     if (!raw) return DEFAULT_SHORTCUTS;
-    const parsed = JSON.parse(raw) as Partial<ShortcutMap>;
-    // Merge with defaults to ensure all actions are present.
-    return { ...DEFAULT_SHORTCUTS, ...parsed } as ShortcutMap;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return DEFAULT_SHORTCUTS;
+    // SEC-009 FIX: Validate each shortcut entry before accepting it.
+    const result: ShortcutMap = { ...DEFAULT_SHORTCUTS };
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!(key in DEFAULT_SHORTCUTS)) continue; // unknown action — skip
+      if (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        typeof (value as Record<string, unknown>).combo === "string" &&
+        typeof (value as Record<string, unknown>).mod === "boolean"
+      ) {
+        const v = value as { combo: string; mod: boolean };
+        // Cap combo length to prevent abuse.
+        if (v.combo.length > 20) continue;
+        (result as Record<string, ShortcutBinding>)[key] = { combo: v.combo, mod: v.mod };
+      }
+    }
+    return result;
   } catch {
     return DEFAULT_SHORTCUTS;
   }

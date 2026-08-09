@@ -110,6 +110,7 @@ export function FinalRecording({ rec, lang, t }: Props) {
         <div className="relative overflow-hidden rounded-xl border border-border/50 bg-black">
           <video
             ref={videoRef}
+            data-recording-player="true"
             src={r.url}
             controls
             playsInline

@@ -21,7 +21,9 @@ export function RecordingTimeline({ rec, lang, t }: Props) {
 
   // Listen to the final video element to drive the playhead + duration.
   useEffect(() => {
-    const video = document.querySelector<HTMLVideoElement>("video[controls][src]");
+    // CODE-003 FIX: Use a specific data attribute to target the final recording
+    // player, not just any video[controls][src] (which could match a clip).
+    const video = document.querySelector<HTMLVideoElement>("video[data-recording-player]");
     if (!video) return;
     const onMeta = () => setDuration(video.duration || 0);
     const onTime = () => setCurrent(video.currentTime || 0);
@@ -40,7 +42,7 @@ export function RecordingTimeline({ rec, lang, t }: Props) {
   const progress = dur > 0 ? Math.min(100, (current / dur) * 100) : 0;
 
   const seekTo = (time: number) => {
-    const video = document.querySelector<HTMLVideoElement>("video[controls][src]");
+    const video = document.querySelector<HTMLVideoElement>("video[data-recording-player]");
     if (video) {
       video.currentTime = time;
       void video.play().catch(() => {});
