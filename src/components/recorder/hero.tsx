@@ -19,14 +19,14 @@ export function Hero({ t }: Props) {
       <div className="dot-grid pointer-events-none absolute inset-0 opacity-40 [mask-image:radial-gradient(70%_60%_at_50%_0%,black,transparent)]" />
       <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20">
         <div className="mx-auto max-w-3xl text-center">
-          <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+          <span className="glass-chip chip-in inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium text-primary">
             <span className="relative flex size-2">
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/60" />
               <span className="relative inline-flex size-2 rounded-full bg-primary" />
             </span>
             {t("heroBadge")}
           </span>
-          <h1 className="mt-5 text-balance text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
+          <h1 className="mt-5 text-balance bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-3xl font-bold tracking-tight text-transparent sm:text-4xl md:text-5xl">
             {t("heroTitle")}
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
@@ -39,9 +39,10 @@ export function Hero({ t }: Props) {
           {trust.map((item) => (
             <div
               key={item.title}
-              className="group rounded-xl border border-border/60 bg-card/60 p-3.5 backdrop-blur-sm transition-colors hover:border-primary/40 hover:bg-accent/40 sm:p-4"
+              className="group relative overflow-hidden rounded-xl border border-border/60 bg-card/60 p-3.5 backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-accent/40 hover:shadow-md sm:p-4"
             >
-              <item.icon className="size-5 text-primary" strokeWidth={2} />
+              <div className="absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+              <item.icon className="size-5 text-primary transition-transform group-hover:scale-110" strokeWidth={2} />
               <div className="mt-2 text-sm font-semibold">{item.title}</div>
               <div className="mt-0.5 text-xs leading-snug text-muted-foreground">
                 {item.desc}

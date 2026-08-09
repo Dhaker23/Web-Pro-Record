@@ -194,8 +194,68 @@ input[type="range"] {
   cursor: grabbing;
 }
 
+/* Glass chip (hero badge, floating chips) */
+.glass-chip {
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid color-mix(in oklch, var(--primary) 25%, transparent);
+}
+
+/* Inset viewport shadow for preview stage (recessed look) */
+.preview-inset {
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.04),
+    inset 0 0 60px 0 rgb(0 0 0 / 0.45);
+}
+
+/* Tech-spec monospace label */
+.mono-label {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.8125rem;
+  letter-spacing: -0.01em;
+}
+
+/* Zebra striping for spec lists */
+.zebra-list > li:nth-child(odd) {
+  background: color-mix(in oklch, var(--muted) 50%, transparent);
+}
+
+/* Emerald toggle glow: when a Switch is checked, give its container a soft glow */
+.toggle-glow[data-checked="true"] {
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 40%, transparent),
+    0 0 16px -2px color-mix(in oklch, var(--primary) 45%, transparent);
+}
+
+/* Smooth fade/slide for status chips */
+@keyframes chip-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.chip-in {
+  animation: chip-in 0.22s ease-out;
+}
+
+/* Shimmer for the "will record as" codec chip */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.codec-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in oklch, var(--primary) 18%, transparent) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 3.2s linear infinite;
+}
+
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  .rec-dot { animation: none; }
+  .rec-dot,
+  .codec-shimmer,
+  .chip-in { animation: none; }
   * { scroll-behavior: auto !important; }
 }

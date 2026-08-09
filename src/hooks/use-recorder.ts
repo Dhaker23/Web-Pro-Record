@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import {
   type OutputQuality,
@@ -74,6 +74,65 @@ const DEFAULT_SETTINGS: RecorderSettings = {
   audioBitrate: 0,
 };
 
+// --- Safe persistence (localStorage may be blocked; never throw) ---
+const PREF_KEY = "wpr-prefs-v1";
+
+type PersistablePrefs = Pick<
+  RecorderSettings,
+  | "quality"
+  | "frameRate"
+  | "webcamShape"
+  | "webcamPosition"
+  | "webcamSize"
+  | "webcamMargin"
+  | "webcamBorder"
+  | "webcamShadow"
+  | "watermark"
+  | "countdown"
+  | "countdownSeconds"
+  | "videoBitrate"
+  | "audioBitrate"
+>;
+
+function loadPrefs(): Partial<PersistablePrefs> | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(PREF_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed as Partial<PersistablePrefs>;
+  } catch {
+    return null;
+  }
+}
+
+function savePrefs(prefs: PersistablePrefs): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PREF_KEY, JSON.stringify(prefs));
+  } catch {
+    /* storage blocked — ignore silently (in-memory only) */
+  }
+}
+
+/** Keys that are safe to persist. */
+const PERSISTABLE_KEYS: (keyof PersistablePrefs)[] = [
+  "quality",
+  "frameRate",
+  "webcamShape",
+  "webcamPosition",
+  "webcamSize",
+  "webcamMargin",
+  "webcamBorder",
+  "webcamShadow",
+  "watermark",
+  "countdown",
+  "countdownSeconds",
+  "videoBitrate",
+  "audioBitrate",
+];
+
 export function useRecorder(
   lang: "en" | "ar",
   canvasRef: RefObject<HTMLCanvasElement | null>,
@@ -83,7 +142,12 @@ export function useRecorder(
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<RecorderError>(null);
   const [warning, setWarning] = useState<string | null>(null);
-  const [settings, setSettings] = useState<RecorderSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<RecorderSettings>(() => {
+    const prefs = loadPrefs();
+    if (!prefs) return DEFAULT_SETTINGS;
+    // Merge persisted prefs over defaults (validate primitive types loosely).
+    return { ...DEFAULT_SETTINGS, ...prefs } as RecorderSettings;
+  });
   const [result, setResult] = useState<RecordingResult>(null);
   const [devices, setDevices] = useState<{ cameras: MediaDeviceInfo[]; mics: MediaDeviceInfo[] }>({
     cameras: [],
@@ -142,6 +206,21 @@ export function useRecorder(
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
+
+  // Negotiated MIME type (best supported by this browser). Stable for the session.
+  const negotiatedMime = useMemo(() => pickMimeType(), []);
+
+  // Persist a safe subset of settings to localStorage whenever they change.
+  useEffect(() => {
+    const prefs: PersistablePrefs = PERSISTABLE_KEYS.reduce(
+      (acc, key) => {
+        (acc as Record<string, unknown>)[key as string] = settings[key];
+        return acc;
+      },
+      {} as PersistablePrefs,
+    );
+    savePrefs(prefs);
+  }, [settings]);
 
   // ---------------- Helpers ----------------
 
@@ -1070,6 +1149,7 @@ export function useRecorder(
     webcamStream,
     screenStream,
     previewMode,
+    negotiatedMime,
     isRecording,
     isPaused,
     canStart,

@@ -17,12 +17,13 @@ export function Footer({ lang, t }: Props) {
 
   return (
     <footer className="mt-auto border-t border-border/60 bg-background">
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-        <div className="grid gap-8 md:grid-cols-3">
+      <div className="h-px w-full bg-gradient-to-r from-transparent via-border/80 to-transparent" />
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
+        <div className="grid gap-10 md:grid-cols-3">
           {/* Brand + credit line */}
           <div className="md:col-span-2">
             <div className="flex items-center gap-2">
-              <div className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
+              <div className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground shadow-sm">
                 <span className="text-sm font-bold">W</span>
               </div>
               <span className="text-base font-bold tracking-tight">{t("brandName")}</span>

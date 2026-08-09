@@ -198,6 +198,29 @@ const en: Dict = {
   ariaRecordingStatus: "Recording status",
   ariaPreview: "Live preview area",
   ariaTimer: "Elapsed recording time",
+
+  // Format preview / output extras
+  outputFormat: "Output format",
+  outputFormatHint: "Best supported codec negotiated by your browser.",
+  willRecordAs: "Will record as",
+  codec: "Codec",
+
+  // Keyboard shortcuts
+  shortcutsTitle: "Keyboard shortcuts",
+  shortcutsDesc: "Speed up your workflow with these shortcuts.",
+  shortcutStart: "Start / Stop recording",
+  shortcutPause: "Pause / Resume",
+  shortcutReset: "Reset session",
+  shortcutToggleLang: "Switch language",
+  shortcutToggleTheme: "Toggle theme",
+  shortcutToggleWebcam: "Toggle webcam",
+  shortcutToggleMic: "Toggle microphone",
+  shortcutClose: "Close",
+  showShortcuts: "Show shortcuts",
+  pressKey: "Press",
+
+  // Persistence
+  preferencesSaved: "Preferences saved",
 };
 
 const ar: Dict = {
@@ -383,6 +406,29 @@ const ar: Dict = {
   ariaRecordingStatus: "حالة التسجيل",
   ariaPreview: "منطقة المعاينة المباشرة",
   ariaTimer: "الوقت المنقضي للتسجيل",
+
+  // Format preview / output extras
+  outputFormat: "صيغة الإخراج",
+  outputFormatHint: "يتم التفاوض على أفضل ترميز مدعوم من متصفحك.",
+  willRecordAs: "سيُسجَّل كـ",
+  codec: "الترميز",
+
+  // Keyboard shortcuts
+  shortcutsTitle: "اختصارات لوحة المفاتيح",
+  shortcutsDesc: "تسارع في عملك مع هذه الاختصارات.",
+  shortcutStart: "بدء / إيقاف التسجيل",
+  shortcutPause: "إيقاف مؤقت / استئناف",
+  shortcutReset: "إعادة ضبط الجلسة",
+  shortcutToggleLang: "تبديل اللغة",
+  shortcutToggleTheme: "تبديل المظهر",
+  shortcutToggleWebcam: "تبديل الكاميرا",
+  shortcutToggleMic: "تبديل الميكروفون",
+  shortcutClose: "إغلاق",
+  showShortcuts: "إظهار الاختصارات",
+  pressKey: "اضغط",
+
+  // Persistence
+  preferencesSaved: "تم حفظ التفضيلات",
 };
 
 export const dictionaries: Record<Lang, Dict> = { en, ar };

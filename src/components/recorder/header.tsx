@@ -3,6 +3,7 @@
 import { Monitor, Moon, Sun, Languages, ShieldCheck } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
+import { ShortcutsDialog } from "@/components/recorder/shortcuts-dialog";
 
 type Props = {
   lang: "en" | "ar";
@@ -39,9 +40,13 @@ export function Header({ lang, onToggleLang, t }: Props) {
 
         {/* Actions */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          <div className="mr-1 hidden items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground md:flex">
+          <div className="mr-1 hidden items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground lg:flex">
             <ShieldCheck className="size-3.5 text-primary" />
             <span>{t("privacyNote")}</span>
+          </div>
+
+          <div className="hidden sm:block">
+            <ShortcutsDialog lang={lang} t={t} />
           </div>
 
           <Button

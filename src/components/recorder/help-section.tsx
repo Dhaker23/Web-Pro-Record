@@ -22,33 +22,36 @@ export function HelpSection({ rec, lang, t }: Props) {
   const notes = [t("helpNote1"), t("helpNote2"), t("helpNote3"), t("helpNote4"), t("helpNote5")];
 
   return (
-    <section className="border-t border-border/50 bg-muted/20">
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Feature support */}
+    <section className="border-t border-border/60 bg-muted/20">
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
+        <div className="grid gap-8 lg:grid-cols-2">
+          {/* Feature support — tech-spec grid */}
           <div>
             <h2 className="text-lg font-semibold">{t("helpTitle")}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{t("helpDesc")}</p>
 
-            <div className="mt-4 overflow-hidden rounded-xl border border-border/60 bg-card">
-              <div className="grid grid-cols-[auto_1fr_auto] gap-x-3 px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                <span />
-                <span>{t("helpSupportsTitle")}</span>
-                <span />
+            <div className="mt-4 overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm">
+              <div className="flex items-center gap-3 border-b border-border/50 bg-muted/40 px-4 py-2.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t("helpSupportsTitle")}
+                </span>
               </div>
-              <ul className="divide-y divide-border/50">
+              <ul className="zebra-list">
                 {rows.map((row) => (
-                  <li key={row.label} className="flex items-center gap-3 px-4 py-2.5">
-                    <row.icon className="size-4 text-muted-foreground" />
-                    <span className="flex-1 text-sm">{row.label}</span>
+                  <li
+                    key={row.label}
+                    className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/30"
+                  >
+                    <row.icon className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="mono-label flex-1 text-foreground/90">{row.label}</span>
                     {row.ok ? (
-                      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                        <Check className="size-3.5" />
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        <Check className="size-3" />
                         {t("helpSupported")}
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400">
-                        <X className="size-3.5" />
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-600 dark:text-red-400">
+                        <X className="size-3" />
                         {t("helpUnsupported")}
                       </span>
                     )}
@@ -61,13 +64,13 @@ export function HelpSection({ rec, lang, t }: Props) {
           {/* Notes */}
           <div>
             <h3 className="text-base font-semibold">{t("helpNotes")}</h3>
-            <ul className="mt-3 space-y-2.5">
+            <ul className="mt-3 space-y-2">
               {notes.map((n, i) => (
                 <li
                   key={i}
-                  className="flex items-start gap-2.5 rounded-xl border border-border/50 bg-card/60 p-3 text-sm leading-snug"
+                  className="group flex items-start gap-3 rounded-xl border border-border/50 bg-card/60 p-3 text-sm leading-relaxed transition-colors hover:border-primary/30 hover:bg-accent/30"
                 >
-                  <Info className="mt-0.5 size-4 shrink-0 text-primary" />
+                  <Info className="mt-0.5 size-4 shrink-0 text-primary transition-transform group-hover:scale-110" />
                   <span className="text-muted-foreground">{n}</span>
                 </li>
               ))}

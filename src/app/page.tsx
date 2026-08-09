@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTheme } from "next-themes";
 import { AlertTriangle, X, Radio } from "lucide-react";
 import { useRecorder } from "@/hooks/use-recorder";
 import { translate, isRtl, type Lang } from "@/lib/i18n";
@@ -19,8 +20,18 @@ export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rec = useRecorder(lang, canvasRef);
   const { toast } = useToast();
+  const { setTheme, resolvedTheme } = useTheme();
 
   const t = useCallback((key: string) => translate(lang, key), [lang]);
+
+  const toggleLang = useCallback(() => {
+    setLang((l) => (l === "en" ? "ar" : "en"));
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    const current = resolvedTheme ?? "dark";
+    setTheme(current === "dark" ? "light" : "dark");
+  }, [resolvedTheme, setTheme]);
 
   // Sync document direction + lang attribute
   useEffect(() => {
@@ -28,10 +39,6 @@ export default function Home() {
     document.documentElement.lang = lang;
     document.documentElement.dir = rtl ? "rtl" : "ltr";
   }, [lang]);
-
-  const toggleLang = useCallback(() => {
-    setLang((l) => (l === "en" ? "ar" : "en"));
-  }, []);
 
   // Surface errors/warnings as toasts
   useEffect(() => {
@@ -56,6 +63,84 @@ export default function Home() {
       return () => clearTimeout(id);
     }
   }, [rec.warning, t, toast]);
+
+  // Keyboard shortcuts (global). Ignores typing in inputs/selects/textareas.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const isEditable =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        target?.isContentEditable;
+      if (isEditable) return;
+
+      const mod = e.metaKey || e.ctrlKey;
+
+      // Ctrl/Cmd + L → toggle language
+      if (mod && e.key.toLowerCase() === "l") {
+        e.preventDefault();
+        toggleLang();
+        return;
+      }
+      // Ctrl/Cmd + D → toggle theme
+      if (mod && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        toggleTheme();
+        return;
+      }
+      if (mod) return; // other combos handled by browser
+
+      switch (e.key) {
+        case " ":
+        case "Spacebar": {
+          e.preventDefault();
+          if (rec.isRecording) {
+            rec.pauseRecording();
+          } else if (rec.isPaused) {
+            rec.resumeRecording();
+          } else if (rec.canStart) {
+            void rec.startRecording();
+          }
+          break;
+        }
+        case "Escape": {
+          if (rec.isRecording || rec.isPaused) {
+            rec.stopRecording();
+          }
+          break;
+        }
+        case "p":
+        case "P": {
+          if (rec.isRecording) rec.pauseRecording();
+          else if (rec.isPaused) rec.resumeRecording();
+          break;
+        }
+        case "r":
+        case "R": {
+          if (!rec.isRecording && !rec.isPaused) rec.resetAll();
+          break;
+        }
+        case "w":
+        case "W": {
+          rec.toggleWebcam(!rec.settings.webcamEnabled);
+          break;
+        }
+        case "m":
+        case "M": {
+          rec.updateSettings("micEnabled", !rec.settings.micEnabled);
+          break;
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [
+    rec,
+    toggleLang,
+    toggleTheme,
+  ]);
 
   // Browser recommendation banner
   const [showBanner, setShowBanner] = useState(false);

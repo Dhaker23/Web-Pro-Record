@@ -113,20 +113,22 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
         ref={wrapperRef}
         role="region"
         aria-label={t("ariaPreview")}
-        className="relative aspect-video w-full overflow-hidden rounded-2xl border border-border/60 bg-[#0b0f10] shadow-inner"
+        className="preview-inset relative aspect-video w-full overflow-hidden rounded-2xl border border-border/60 bg-[#0b0f10]"
       >
-        {/* Empty state */}
+        {/* Empty state — recessed viewport with wireframe monitor */}
         {isEmpty && (
-          <div className="dot-grid absolute inset-0 opacity-30" />
+          <div className="dot-grid absolute inset-0 opacity-25" />
         )}
         {isEmpty && (
           <div className="absolute inset-0 grid place-items-center p-6 text-center">
             <div className="max-w-sm">
-              <div className="mx-auto mb-4 grid size-14 place-items-center rounded-2xl border border-border/60 bg-card/60">
-                <Monitor className="size-7 text-muted-foreground" />
+              <div className="relative mx-auto mb-4 grid size-16 place-items-center">
+                <div className="absolute inset-0 rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.04] to-transparent" />
+                <div className="absolute inset-2 rounded-xl border border-white/[0.06]" />
+                <Monitor className="relative size-7 text-muted-foreground/80" />
               </div>
               <p className="text-sm font-medium text-muted-foreground">{t("previewEmpty")}</p>
-              <p className="mt-1 text-xs text-muted-foreground/70">
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground/60">
                 {lang === "ar"
                   ? "فعّل الكاميرا لمعاينة الطبقة العلوية، أو اضغط ابدأ التسجيل."
                   : "Enable the webcam to preview the overlay, or press Start Recording."}

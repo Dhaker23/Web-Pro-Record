@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { mimeToLabel } from "@/lib/recorder-utils";
 import type { UseRecorder } from "@/hooks/use-recorder";
 import type { Lang, OutputQuality as Q } from "@/lib/i18n";
 import type { WebcamPosition, WebcamShape, FrameRate } from "@/lib/i18n";
@@ -54,7 +55,7 @@ function SectionCard({
   t: (k: string) => string;
 }) {
   return (
-    <Card className="overflow-hidden border-border/60 p-0 shadow-sm">
+    <Card className="overflow-hidden border-border/60 p-0 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex items-center gap-2.5 border-b border-border/50 bg-muted/30 px-4 py-3">
         <div className="grid size-7 place-items-center rounded-lg bg-primary/10 text-primary">
           <Icon className="size-4" strokeWidth={2.2} />
@@ -66,7 +67,7 @@ function SectionCard({
           ) : null}
         </div>
       </div>
-      <div className="p-4">{children}</div>
+      <div className="p-5">{children}</div>
     </Card>
   );
 }
@@ -96,13 +97,22 @@ function ToggleRow({
         : "text-primary bg-primary/10";
   return (
     <div
+      data-checked={checked ? "true" : "false"}
       className={cn(
-        "flex items-center justify-between gap-3 rounded-xl border p-3 transition-colors",
-        checked ? "border-primary/40 bg-primary/5" : "border-border/50 bg-card/40",
+        "toggle-glow flex items-center justify-between gap-3 rounded-xl border p-3 transition-all duration-200",
+        checked
+          ? "border-primary/40 bg-primary/5"
+          : "border-border/50 bg-card/40 hover:border-border hover:bg-card/70",
       )}
     >
       <div className="flex min-w-0 items-center gap-3">
-        <div className={cn("grid size-9 shrink-0 place-items-center rounded-lg", accentClass)}>
+        <div
+          className={cn(
+            "grid size-9 shrink-0 place-items-center rounded-lg transition-transform duration-200",
+            accentClass,
+            checked && "scale-105",
+          )}
+        >
           <Icon className="size-[18px]" strokeWidth={2.1} />
         </div>
         <div className="min-w-0">
@@ -304,6 +314,39 @@ export function ControlPanel({ rec, lang, t }: Props) {
               disabled={disabled}
             />
           </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground">{t("audioBitrate")}</Label>
+              <span className="text-[11px] font-medium text-muted-foreground">
+                {settings.audioBitrate ? `${Math.round(settings.audioBitrate / 1000)} kbps` : t("bitrateAuto")}
+              </span>
+            </div>
+            <Slider
+              value={[settings.audioBitrate / 1000]}
+              min={0}
+              max={320}
+              step={16}
+              onValueChange={(v) => rec.updateSettings("audioBitrate", Math.round(v[0] * 1000))}
+              disabled={disabled}
+            />
+          </div>
+
+          {/* Recording format preview — shows the negotiated codec before recording */}
+          {rec.negotiatedMime ? (
+            <div className="codec-shimmer relative flex items-center justify-between gap-2 overflow-hidden rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5">
+              <div className="min-w-0">
+                <div className="text-[11px] font-medium text-muted-foreground">{t("willRecordAs")}</div>
+                <div className="mt-0.5 truncate font-mono text-xs font-bold text-primary">
+                  {mimeToLabel(rec.negotiatedMime)}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-emerald-500" />
+                <Film className="size-4 shrink-0 text-primary" />
+              </div>
+            </div>
+          ) : null}
         </div>
       </SectionCard>
 
