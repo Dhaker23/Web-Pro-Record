@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Pen, Highlighter, ArrowUpRight, Type, Eraser, Trash2, Undo2, Palette } from "lucide-react";
+import { Pen, Highlighter, ArrowUpRight, Type, Eraser, Trash2, Undo2, Palette, Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
@@ -133,6 +133,39 @@ export function AnnotationToolbar({ annotations, lang, t, disabled }: Props) {
       >
         <Trash2 className="size-4" />
       </Button>
+
+      <div className="mx-0.5 h-5 w-px bg-border/60" />
+
+      {/* Round 10: Export / Import */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-8"
+        onClick={annotations.downloadJson}
+        disabled={annotations.strokes.length === 0}
+        aria-label={t("annotationExport")}
+        title={t("annotationExport")}
+      >
+        <Download className="size-4" />
+      </Button>
+      <label
+        className="grid size-8 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        title={t("annotationImport")}
+      >
+        <Upload className="size-4" />
+        <input
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              await annotations.importFromFile(file);
+              e.target.value = "";
+            }
+          }}
+        />
+      </label>
     </div>
   );
 }

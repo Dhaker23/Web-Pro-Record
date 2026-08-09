@@ -16,12 +16,14 @@ import {
   Settings2,
   Sparkles,
   Info,
+  Droplet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -511,14 +513,6 @@ export function ControlPanel({ rec, lang, t }: Props) {
             </label>
             <label className="flex items-center gap-2 text-xs">
               <Switch
-                checked={settings.watermark}
-                onCheckedChange={(v) => rec.updateSettings("watermark", v)}
-                disabled={disabled}
-              />
-              {t("watermark")}
-            </label>
-            <label className="flex items-center gap-2 text-xs">
-              <Switch
                 checked={settings.countdown}
                 onCheckedChange={(v) => rec.updateSettings("countdown", v)}
                 disabled={disabled}
@@ -543,6 +537,77 @@ export function ControlPanel({ rec, lang, t }: Props) {
               />
             </div>
           ) : null}
+        </div>
+      </SectionCard>
+
+      {/* Round 10: Watermark (independent of webcam) */}
+      <SectionCard title={t("watermark")} icon={Droplet} t={t}>
+        <div className="flex flex-col gap-3">
+          <label className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-card/40 px-3 py-2">
+            <span className="text-xs font-medium">{t("watermark")}</span>
+            <Switch
+              checked={settings.watermark}
+              onCheckedChange={(v) => rec.updateSettings("watermark", v)}
+              disabled={disabled}
+              aria-label={t("watermark")}
+            />
+          </label>
+          {settings.watermark && (
+            <div className="space-y-3 rounded-xl border border-border/50 bg-muted/30 p-3">
+              <div className="text-[11px] font-medium text-muted-foreground">{t("watermarkCustom")}</div>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] text-muted-foreground">{t("watermarkText")}</Label>
+                <Input
+                  value={settings.watermarkText}
+                  onChange={(e) => rec.updateSettings("watermarkText", e.target.value)}
+                  placeholder={t("watermarkTextPlaceholder")}
+                  disabled={disabled}
+                  className="h-8 text-xs"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 gap-1 px-2 text-[10px] text-muted-foreground"
+                  onClick={() => rec.updateSettings("watermarkText", "")}
+                  disabled={disabled}
+                >
+                  {t("watermarkUseApp")}
+                </Button>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] text-muted-foreground">{t("watermarkOpacity")}</Label>
+                  <span className="text-[10px] font-medium text-muted-foreground">
+                    {Math.round(settings.watermarkOpacity * 100)}%
+                  </span>
+                </div>
+                <Slider
+                  value={[settings.watermarkOpacity]}
+                  min={0.1}
+                  max={1}
+                  step={0.05}
+                  onValueChange={(v) => rec.updateSettings("watermarkOpacity", v[0])}
+                  disabled={disabled}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] text-muted-foreground">{t("watermarkSize")}</Label>
+                  <span className="text-[10px] font-medium text-muted-foreground">
+                    {Math.round(settings.watermarkSize * 1000)}‰
+                  </span>
+                </div>
+                <Slider
+                  value={[settings.watermarkSize]}
+                  min={0.01}
+                  max={0.06}
+                  step={0.002}
+                  onValueChange={(v) => rec.updateSettings("watermarkSize", v[0])}
+                  disabled={disabled}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </SectionCard>
 

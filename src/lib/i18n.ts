@@ -408,6 +408,27 @@ const en: Dict = {
   shortcutToggleScheduler: "Toggle scheduler",
   shortcutCaptureSnapshot: "Capture snapshot",
   shortcutCaptureClip: "Capture clip",
+
+  // Round 10 — custom watermark + annotation export
+  watermarkCustom: "Custom watermark",
+  watermarkCustomDesc: "Personalize the watermark text or use the app name.",
+  watermarkText: "Watermark text",
+  watermarkTextPlaceholder: "e.g. Your Name or Brand",
+  watermarkPosition: "Watermark position",
+  watermarkOpacity: "Opacity",
+  watermarkSize: "Size",
+  watermarkUseApp: "Use app name",
+  watermarkColor: "Color",
+  watermarkPreview: "Preview",
+  annotationExport: "Export annotations",
+  annotationExportDesc: "Save your annotations as a JSON file.",
+  annotationImport: "Import annotations",
+  annotationImportDesc: "Load annotations from a JSON file.",
+  annotationExported: "Annotations exported",
+  annotationImported: "Annotations imported",
+  annotationImportFailed: "Failed to import annotations",
+  annotationExportEmpty: "No annotations to export",
+  annotationClearAll: "Clear all annotations",
 };
 
 const ar: Dict = {
@@ -803,6 +824,27 @@ const ar: Dict = {
   shortcutToggleScheduler: "تبديل المجدول",
   shortcutCaptureSnapshot: "التقاط لقطة",
   shortcutCaptureClip: "التقاط مقطع",
+
+  // Round 10 — custom watermark + annotation export
+  watermarkCustom: "علامة مائية مخصّصة",
+  watermarkCustomDesc: "خصّص نص العلامة المائية أو استخدم اسم التطبيق.",
+  watermarkText: "نص العلامة المائية",
+  watermarkTextPlaceholder: "مثال: اسمك أو علامتك التجارية",
+  watermarkPosition: "موضع العلامة المائية",
+  watermarkOpacity: "الشفافية",
+  watermarkSize: "الحجم",
+  watermarkUseApp: "استخدم اسم التطبيق",
+  watermarkColor: "اللون",
+  watermarkPreview: "معاينة",
+  annotationExport: "تصدير التعليقات",
+  annotationExportDesc: "احفظ تعليقاتك التوضيحية كملف JSON.",
+  annotationImport: "استيراد التعليقات",
+  annotationImportDesc: "حمّل التعليقات التوضيحية من ملف JSON.",
+  annotationExported: "تم تصدير التعليقات التوضيحية",
+  annotationImported: "تم استيراد التعليقات التوضيحية",
+  annotationImportFailed: "تعذّر استيراد التعليقات التوضيحية",
+  annotationExportEmpty: "لا توجد تعليقات توضيحية للتصدير",
+  annotationClearAll: "مسح جميع التعليقات التوضيحية",
 };
 
 export const dictionaries: Record<Lang, Dict> = { en, ar };

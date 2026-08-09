@@ -216,6 +216,67 @@ export function useAnnotations() {
     [strokes, activeStroke, textCursor],
   );
 
+  /** Round 10: Export all strokes as a JSON string. */
+  const exportJson = useCallback((): string => {
+    return JSON.stringify(
+      {
+        app: "Web Pro Record",
+        type: "annotations",
+        exportedAt: new Date().toISOString(),
+        strokeCount: strokes.length,
+        strokes,
+      },
+      null,
+      2,
+    );
+  }, [strokes]);
+
+  /** Round 10: Download annotations as a JSON file. */
+  const downloadJson = useCallback(() => {
+    const json = exportJson();
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    a.download = `wpr-annotations-${ts}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [exportJson]);
+
+  /** Round 10: Import annotations from a JSON string. Returns true on success. */
+  const importJson = useCallback((json: string): boolean => {
+    try {
+      const parsed = JSON.parse(json) as { strokes?: AnnotationStroke[] };
+      if (!parsed.strokes || !Array.isArray(parsed.strokes)) return false;
+      // Basic validation of stroke shape.
+      const valid = parsed.strokes.filter(
+        (st) =>
+          st &&
+          typeof st.tool === "string" &&
+          typeof st.color === "string" &&
+          typeof st.size === "number" &&
+          Array.isArray(st.points),
+      ) as AnnotationStroke[];
+      setStrokes(valid);
+      return valid.length > 0;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  /** Round 10: Import annotations from a File (e.g., from an <input type=file>). */
+  const importFromFile = useCallback(async (file: File): Promise<boolean> => {
+    try {
+      const text = await file.text();
+      return importJson(text);
+    } catch {
+      return false;
+    }
+  }, [importJson]);
+
   return {
     settings,
     strokes,
@@ -230,6 +291,10 @@ export function useAnnotations() {
     commitText,
     cancelText,
     drawAnnotations,
+    exportJson,
+    downloadJson,
+    importJson,
+    importFromFile,
   };
 }
 

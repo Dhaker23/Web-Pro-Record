@@ -128,6 +128,10 @@ export type RecorderSettings = {
   videoBitrate: number; // 0 = auto
   audioBitrate: number; // 0 = auto
   adaptiveFps: boolean; // auto-reduce FPS if device can't keep up
+  // Round 10: custom watermark
+  watermarkText: string; // empty = use app name
+  watermarkOpacity: number; // 0..1
+  watermarkSize: number; // 0.01..0.06 (fraction of height)
 };
 
 export type RecorderError = { kind: string; message: string } | null;
@@ -150,6 +154,9 @@ const DEFAULT_SETTINGS: RecorderSettings = {
   videoBitrate: 0,
   audioBitrate: 0,
   adaptiveFps: true,
+  watermarkText: "",
+  watermarkOpacity: 0.7,
+  watermarkSize: 0.022,
 };
 
 // --- Safe persistence (localStorage may be blocked; never throw) ---
@@ -171,6 +178,9 @@ type PersistablePrefs = Pick<
   | "videoBitrate"
   | "audioBitrate"
   | "adaptiveFps"
+  | "watermarkText"
+  | "watermarkOpacity"
+  | "watermarkSize"
 >;
 
 function loadPrefs(): Partial<PersistablePrefs> | null {
@@ -211,6 +221,9 @@ const PERSISTABLE_KEYS: (keyof PersistablePrefs)[] = [
   "videoBitrate",
   "audioBitrate",
   "adaptiveFps",
+  "watermarkText",
+  "watermarkOpacity",
+  "watermarkSize",
 ];
 
 export function useRecorder(
@@ -634,12 +647,16 @@ export function useRecorder(
   // ---------------- Composite render ----------------
 
   const drawWatermark = (ctx: CanvasRenderingContext2D, w: number, h: number, rtl: boolean) => {
-    const text = "Web Pro Record";
+    const s = settingsRef.current;
+    // Round 10: use custom watermark text if set, otherwise the app name.
+    const text = s.watermarkText?.trim() || "Web Pro Record";
+    const opacity = Math.max(0.1, Math.min(1, s.watermarkOpacity));
+    const sizeFraction = Math.max(0.01, Math.min(0.06, s.watermarkSize));
     ctx.save();
-    const fontSize = Math.max(12, Math.round(h * 0.022));
+    const fontSize = Math.max(12, Math.round(h * sizeFraction));
     ctx.font = `600 ${fontSize}px var(--font-geist-sans), sans-serif`;
-    ctx.fillStyle = "rgba(255,255,255,0.7)";
-    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx.fillStyle = `rgba(255,255,255,${opacity})`;
+    ctx.strokeStyle = `rgba(0,0,0,${opacity * 0.5})`;
     ctx.lineWidth = Math.max(1, fontSize / 6);
     ctx.textBaseline = "bottom";
     const margin = Math.round(h * 0.02);

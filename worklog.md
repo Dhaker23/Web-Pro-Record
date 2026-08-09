@@ -338,7 +338,39 @@ Priority for next phase: manual real-browser recording validation, then add drag
 
 ### Remaining recommendations for next phase
 1. **Persist history to IndexedDB** — currently in-memory only; could persist across sessions with IndexedDB.
-2. **Annotation persistence** — persist annotations across recordings or allow exporting them.
+2. ~~Annotation persistence~~ ✅ DONE (round 10 — export/import JSON)
 3. **Manual real-browser recording validation** — test the full workflow in Chrome (cannot be done in headless).
-4. **Custom watermark text/logo** — let users customize the watermark text or upload a logo.
+4. ~~Custom watermark text/logo~~ ✅ DONE (round 10 — custom text + opacity + size)
 5. **Recording format conversion** — client-side WebM→MP4 conversion (if feasible without backend).
+
+---
+
+## Round 10 — Custom Watermark + Annotation Export (cron webDevReview)
+
+### Task ID: 10
+### Agent: main (cron webDevReview)
+### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+
+### Work Log
+- Read worklog; confirmed rounds 1–9 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+- VLM critical assessment identified: live preview empty state, footer density as weak areas; recommended custom watermark and annotation export as new features.
+- **New features added (Round 10):**
+  - **Custom watermark** — Added `watermarkText`, `watermarkOpacity`, and `watermarkSize` to RecorderSettings (persisted). The `drawWatermark` function now uses the custom text (falls back to "Web Pro Record" if empty), custom opacity (0.1–1), and custom size (0.01–0.06 fraction of canvas height). The watermark toggle was moved out of the webcam-gated section into its own independent SectionCard (it's now always accessible, not gated by webcam being enabled). When watermark is on, a custom settings panel appears with a text input (with "Use app name" reset button), an opacity slider (10–100%), and a size slider (10–60‰). All settings are persisted to localStorage.
+  - **Annotation export/import** — Added `exportJson()`, `downloadJson()`, `importJson(json)`, and `importFromFile(file)` to the `useAnnotations` hook. Export builds a JSON payload (app name, type, exportedAt, stroke count, and the full strokes array). Import validates the JSON structure (checks `strokes` array with required fields) and loads valid strokes. The AnnotationToolbar now has Export (Download icon) and Import (Upload icon with hidden file input) buttons after the undo/clear buttons, separated by a divider.
+- **i18n:** added ~20 new keys (EN + AR) for custom watermark (text, opacity, size, position, preview, use app name) and annotation export/import (export, import, descriptions, success/failure messages).
+- **Architecture:** new RecorderSettings fields (`watermarkText`, `watermarkOpacity`, `watermarkSize`) + persistable; `drawWatermark` reads from `settingsRef`; watermark SectionCard independent of webcam gating; new annotation hook functions (`exportJson`, `downloadJson`, `importJson`, `importFromFile`) with validation.
+- **Styling:** watermark SectionCard with Droplet icon; custom settings panel with text input + opacity/size sliders + use-app-name button; annotation toolbar with export/import buttons (Download/Upload icons) separated by divider. All reduced-motion safe.
+- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+
+### Stage Summary
+- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 10 features present: Watermark section ✓ (independent of webcam), custom watermark UI ✓ (Custom watermark, Watermark text, Opacity, Size, Use app name all visible after toggling). Watermark toggle verified live: toggled on, custom settings panel appeared. Keyboard shortcuts (Ctrl+L) still work (toggled EN→AR→RTL live).
+- **VLM verdict (round 10):** Watermark section with toggle + text input + opacity slider (70%) + size slider (22‰) confirmed ✓; overall layout highly polished and premium ✓; sophisticated dark-mode aesthetic with consistent spacing, clear typography hierarchy, professional accent colors; no visible bugs or layout issues.
+- **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-recorder.ts`, `src/hooks/use-annotations.ts`, `src/components/recorder/control-panel.tsx`, `src/components/recorder/annotation-toolbar.tsx`.
+
+### Remaining recommendations for next phase
+1. **Persist history to IndexedDB** — currently in-memory only; could persist across sessions with IndexedDB.
+2. **Recording format conversion** — client-side WebM→MP4 conversion (if feasible without backend).
+3. **Watermark logo upload** — extend watermark to support an uploaded image/logo (currently text-only).
+4. **Manual real-browser recording validation** — test the full workflow in Chrome (cannot be done in headless).
+5. **Custom annotation colors palette** — let users pick custom colors beyond the 7 presets.
