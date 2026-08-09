@@ -46,72 +46,72 @@
 
 :root {
   --radius: 0.75rem;
-  /* Light: warm paper-white background with refined emerald brand */
-  --background: oklch(0.99 0.004 145);
-  --foreground: oklch(0.21 0.01 150);
+  /* Light: elegant violet/indigo brand with soft warm background */
+  --background: oklch(0.985 0.005 285);
+  --foreground: oklch(0.22 0.02 285);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0.01 150);
+  --card-foreground: oklch(0.22 0.02 285);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.01 150);
-  --primary: oklch(0.62 0.13 162); /* emerald */
-  --primary-foreground: oklch(0.99 0.01 150);
-  --secondary: oklch(0.97 0.006 150);
-  --secondary-foreground: oklch(0.25 0.01 150);
-  --muted: oklch(0.97 0.005 150);
-  --muted-foreground: oklch(0.52 0.012 155);
-  --accent: oklch(0.95 0.03 165);
-  --accent-foreground: oklch(0.3 0.06 165);
+  --popover-foreground: oklch(0.22 0.02 285);
+  --primary: oklch(0.55 0.22 285); /* rich violet */
+  --primary-foreground: oklch(0.99 0.01 285);
+  --secondary: oklch(0.96 0.01 285);
+  --secondary-foreground: oklch(0.28 0.03 285);
+  --muted: oklch(0.96 0.008 285);
+  --muted-foreground: oklch(0.5 0.02 285);
+  --accent: oklch(0.93 0.04 300); /* soft fuchsia accent */
+  --accent-foreground: oklch(0.35 0.1 300);
   --destructive: oklch(0.58 0.22 27);
-  --border: oklch(0.92 0.006 150);
-  --input: oklch(0.92 0.006 150);
-  --ring: oklch(0.62 0.13 162);
-  --chart-1: oklch(0.62 0.13 162);
-  --chart-2: oklch(0.6 0.12 200);
-  --chart-3: oklch(0.55 0.13 40);
-  --chart-4: oklch(0.65 0.18 300);
+  --border: oklch(0.91 0.01 285);
+  --input: oklch(0.91 0.01 285);
+  --ring: oklch(0.55 0.22 285);
+  --chart-1: oklch(0.55 0.22 285);
+  --chart-2: oklch(0.6 0.2 320);
+  --chart-3: oklch(0.55 0.18 240);
+  --chart-4: oklch(0.65 0.18 200);
   --chart-5: oklch(0.7 0.16 80);
-  --sidebar: oklch(0.985 0.004 150);
-  --sidebar-foreground: oklch(0.21 0.01 150);
-  --sidebar-primary: oklch(0.62 0.13 162);
-  --sidebar-primary-foreground: oklch(0.99 0.01 150);
-  --sidebar-accent: oklch(0.95 0.03 165);
-  --sidebar-accent-foreground: oklch(0.3 0.06 165);
-  --sidebar-border: oklch(0.92 0.006 150);
-  --sidebar-ring: oklch(0.62 0.13 162);
+  --sidebar: oklch(0.98 0.006 285);
+  --sidebar-foreground: oklch(0.22 0.02 285);
+  --sidebar-primary: oklch(0.55 0.22 285);
+  --sidebar-primary-foreground: oklch(0.99 0.01 285);
+  --sidebar-accent: oklch(0.93 0.04 300);
+  --sidebar-accent-foreground: oklch(0.35 0.1 300);
+  --sidebar-border: oklch(0.91 0.01 285);
+  --sidebar-ring: oklch(0.55 0.22 285);
 }
 
 .dark {
-  --background: oklch(0.16 0.008 155);
-  --foreground: oklch(0.96 0.005 150);
-  --card: oklch(0.205 0.01 155);
-  --card-foreground: oklch(0.96 0.005 150);
-  --popover: oklch(0.205 0.01 155);
-  --popover-foreground: oklch(0.96 0.005 150);
-  --primary: oklch(0.7 0.14 165); /* brighter emerald for dark */
-  --primary-foreground: oklch(0.18 0.02 165);
-  --secondary: oklch(0.26 0.01 155);
-  --secondary-foreground: oklch(0.96 0.005 150);
-  --muted: oklch(0.26 0.01 155);
-  --muted-foreground: oklch(0.7 0.012 155);
-  --accent: oklch(0.3 0.04 165);
-  --accent-foreground: oklch(0.92 0.04 165);
+  --background: oklch(0.17 0.015 285);
+  --foreground: oklch(0.96 0.008 285);
+  --card: oklch(0.21 0.02 285);
+  --card-foreground: oklch(0.96 0.008 285);
+  --popover: oklch(0.21 0.02 285);
+  --popover-foreground: oklch(0.96 0.008 285);
+  --primary: oklch(0.7 0.2 290); /* bright violet for dark */
+  --primary-foreground: oklch(0.16 0.03 290);
+  --secondary: oklch(0.26 0.02 285);
+  --secondary-foreground: oklch(0.96 0.008 285);
+  --muted: oklch(0.26 0.015 285);
+  --muted-foreground: oklch(0.7 0.02 285);
+  --accent: oklch(0.32 0.06 300);
+  --accent-foreground: oklch(0.9 0.06 300);
   --destructive: oklch(0.68 0.2 25);
   --border: oklch(1 0 0 / 9%);
   --input: oklch(1 0 0 / 13%);
-  --ring: oklch(0.7 0.14 165);
-  --chart-1: oklch(0.7 0.14 165);
-  --chart-2: oklch(0.65 0.12 200);
-  --chart-3: oklch(0.7 0.16 40);
-  --chart-4: oklch(0.7 0.18 300);
+  --ring: oklch(0.7 0.2 290);
+  --chart-1: oklch(0.7 0.2 290);
+  --chart-2: oklch(0.68 0.2 320);
+  --chart-3: oklch(0.65 0.18 240);
+  --chart-4: oklch(0.7 0.18 200);
   --chart-5: oklch(0.75 0.16 80);
-  --sidebar: oklch(0.205 0.01 155);
-  --sidebar-foreground: oklch(0.96 0.005 150);
-  --sidebar-primary: oklch(0.7 0.14 165);
-  --sidebar-primary-foreground: oklch(0.18 0.02 165);
-  --sidebar-accent: oklch(0.3 0.04 165);
-  --sidebar-accent-foreground: oklch(0.92 0.04 165);
+  --sidebar: oklch(0.21 0.02 285);
+  --sidebar-foreground: oklch(0.96 0.008 285);
+  --sidebar-primary: oklch(0.7 0.2 290);
+  --sidebar-primary-foreground: oklch(0.16 0.03 290);
+  --sidebar-accent: oklch(0.32 0.06 300);
+  --sidebar-accent-foreground: oklch(0.9 0.06 300);
   --sidebar-border: oklch(1 0 0 / 9%);
-  --sidebar-ring: oklch(0.7 0.14 165);
+  --sidebar-ring: oklch(0.7 0.2 290);
 }
 
 @layer base {
@@ -160,11 +160,26 @@
   animation: rec-pulse 1.4s ease-in-out infinite;
 }
 
-/* Subtle grid / aura background for hero */
+/* Elegant gradient aura for hero — violet → fuchsia blend */
 .hero-aura {
   background-image:
-    radial-gradient(60% 55% at 50% 0%, color-mix(in oklch, var(--primary) 14%, transparent) 0%, transparent 70%),
-    radial-gradient(40% 40% at 85% 10%, color-mix(in oklch, var(--primary) 8%, transparent) 0%, transparent 70%);
+    radial-gradient(60% 55% at 50% 0%, color-mix(in oklch, var(--primary) 16%, transparent) 0%, transparent 70%),
+    radial-gradient(40% 40% at 85% 10%, color-mix(in oklch, var(--accent) 14%, transparent) 0%, transparent 70%),
+    radial-gradient(35% 35% at 15% 15%, color-mix(in oklch, var(--primary) 10%, transparent) 0%, transparent 70%);
+}
+
+/* Gradient text utility for elegant headings — violet → fuchsia, visible in both modes */
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary), oklch(0.6 0.22 320));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Gradient brand badge */
+.gradient-brand {
+  background: linear-gradient(135deg, var(--primary), color-mix(in oklch, var(--accent) 70%, var(--primary)));
 }
 
 /* Fine dotted grid */

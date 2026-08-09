@@ -158,8 +158,9 @@ const en: Dict = {
   helpNote5: "If a source is denied, recording continues with the remaining sources when possible.",
 
   // Footer
-  footerText:
-    "This website was created with the help of Abdellatif Said —",
+  footerDesignedBy: "Designed & Developed by",
+  footerDesignerName: "Dhaker Amara",
+  footerTagline: "Bringing ideas to life through modern digital experiences",
   footerYoutube: "YouTube",
   footerFacebook: "Facebook",
   footerCodedBy: "Coded by",
@@ -596,7 +597,9 @@ const ar: Dict = {
   helpNote5: "إذا رُفض أحد المصادر، يُستكمل التسجيل بالمصادر المتبقية عند الإمكان.",
 
   // Footer
-  footerText: "تم إنشاء هذا الموقع بمساعدة عبداللطيف سعيد —",
+  footerDesignedBy: "تصميم وتطوير",
+  footerDesignerName: "ذاكر عمارة",
+  footerTagline: "نُجسّد الأفكار في تجارب رقمية حديثة",
   footerYoutube: "يوتيوب",
   footerFacebook: "فيسبوك",
   footerCodedBy: "برمجة",

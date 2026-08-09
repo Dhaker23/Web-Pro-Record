@@ -29,7 +29,7 @@ export function Header({ lang, onToggleLang, t, shortcuts, onShortcutsChange, on
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
         {/* Brand */}
         <div className="flex items-center gap-2.5">
-          <div className="relative grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+          <div className="relative grid size-9 place-items-center rounded-xl bg-gradient-to-br from-primary to-fuchsia-500 text-primary-foreground shadow-sm">
             <Monitor className="size-5" strokeWidth={2.2} />
             <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-red-500 ring-2 ring-background" />
           </div>

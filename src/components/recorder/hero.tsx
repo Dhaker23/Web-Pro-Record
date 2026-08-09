@@ -26,7 +26,7 @@ export function Hero({ t }: Props) {
             </span>
             {t("heroBadge")}
           </span>
-          <h1 className="mt-5 text-balance bg-gradient-to-b from-foreground to-foreground/70 bg-clip-text text-3xl font-bold tracking-tight text-transparent sm:text-4xl md:text-5xl">
+          <h1 className="mt-5 text-balance bg-gradient-to-r from-primary via-primary to-fuchsia-500 bg-clip-text text-3xl font-bold tracking-tight text-transparent sm:text-4xl md:text-5xl">
             {t("heroTitle")}
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
