@@ -7,7 +7,11 @@ export type ShortcutAction =
   | "toggleLang"
   | "toggleTheme"
   | "toggleWebcam"
-  | "toggleMic";
+  | "toggleMic"
+  | "toggleAnnotations"
+  | "toggleScheduler"
+  | "captureSnapshot"
+  | "captureClip";
 
 export type ShortcutBinding = {
   /** The key combination, e.g. "Space", "KeyP", "Ctrl+KeyL". */
@@ -26,6 +30,10 @@ export const DEFAULT_SHORTCUTS: ShortcutMap = {
   toggleTheme: { combo: "KeyD", mod: true },
   toggleWebcam: { combo: "KeyW", mod: false },
   toggleMic: { combo: "KeyM", mod: false },
+  toggleAnnotations: { combo: "KeyA", mod: false },
+  toggleScheduler: { combo: "KeyS", mod: false },
+  captureSnapshot: { combo: "KeyC", mod: false },
+  captureClip: { combo: "KeyV", mod: false },
 };
 
 const SHORTCUT_KEY = "wpr-shortcuts-v1";

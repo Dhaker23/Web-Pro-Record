@@ -305,7 +305,40 @@ Priority for next phase: manual real-browser recording validation, then add drag
 
 ### Remaining recommendations for next phase
 1. **Persist history to IndexedDB** — currently in-memory only; could persist across sessions with IndexedDB.
-2. **Auto-stop integration** — wire the scheduler's max-duration to auto-stop recording after the limit.
+2. ~~Auto-stop integration~~ ✅ DONE (round 9 — scheduler max-duration wired to auto-stop)
 3. **Annotation persistence** — persist annotations across recordings or allow exporting them.
-4. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets + shortcut editor + templates + export stats + profiling + history + annotations + scheduler in Chrome (cannot be done in headless).
-5. **Export history manifest** — export the history list as a JSON manifest for record-keeping.
+4. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets + shortcut editor + templates + export stats + profiling + history + annotations + scheduler + auto-stop + manifest + new shortcuts in Chrome (cannot be done in headless).
+5. ~~Export history manifest~~ ✅ DONE (round 9 — JSON manifest export + copy)
+
+---
+
+## Round 9 — Auto-Stop, Manifest Export, New Shortcuts (cron webDevReview)
+
+### Task ID: 9
+### Agent: main (cron webDevReview)
+### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+
+### Work Log
+- Read worklog; confirmed rounds 1–8 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+- VLM critical assessment identified: live preview empty state, device selection UI as weak areas; recommended auto-stop, manifest export, new shortcuts as features.
+- **New features added (Round 9):**
+  - **Scheduler auto-stop integration** — The Scheduler's max-duration slider now calls `onAutoStopChange(ms)` which sets `autoStopMs` state in the page. A useEffect watches `rec.elapsed` and auto-stops recording when `elapsed * 1000 >= autoStopMs`, showing a toast "Auto-stop: duration limit reached". A live "Auto-stop in MM:SS" countdown indicator appears in the Scheduler during recording when a duration limit is set. The Scheduler is now controlled (`enabled` + `onEnabledChange` props from page state) so the 'S' keyboard shortcut can toggle it.
+  - **Export history manifest** — `exportManifestJson()` builds a JSON payload (app name, exportedAt, language, recording count, and an array of all history recordings with id, createdAt, duration, size, mimeType, codec, dimensions). `downloadManifest()` downloads it as `wpr-manifest-{timestamp}.json`. `copyManifest()` copies to clipboard. The HistoryPanel now has "Copy manifest" and "Download manifest" buttons (disabled when history is empty) with toast feedback.
+  - **New keyboard shortcuts** — Added 4 new customizable shortcuts: `toggleAnnotations` (A), `toggleScheduler` (S), `captureSnapshot` (C), `captureClip` (V). The `ShortcutAction` type, `DEFAULT_SHORTCUTS`, shortcut editor dialog, and read-only shortcuts dialog were all updated with the new actions. The page keyboard handler handles all 4 new shortcuts (annotations toggle only works during recording; scheduler toggle works anytime; snapshot/clip only during recording). Refs (`annotationsRef`, `recRef`) kept in sync via useEffect for handler access.
+- **i18n:** added ~16 new keys (EN + AR) for auto-stop, manifest export, and new shortcut labels.
+- **Architecture:** new hook actions (`exportManifestJson`, `downloadManifest`, `copyManifest`); Scheduler now controlled component; page manages `autoStopMs` + `schedulerEnabled` state; auto-stop effect watches elapsed; 4 new shortcut actions in the shortcuts system.
+- **Styling:** manifest export buttons in history panel header; auto-stop live countdown indicator in scheduler; all new shortcuts in editor with styled `<kbd>` keys. All reduced-motion safe.
+- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied (refs synced via useEffect, not during render).
+
+### Stage Summary
+- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 9 features present: Scheduler with auto-stop ✓ (Start at, Max duration visible), new shortcuts in editor ✓ (Toggle annotations, Toggle scheduler, Capture snapshot, Capture clip all present), manifest buttons in history panel (only when history exists). 'S' shortcut verified live: toggled scheduler on, "Scheduler" title appeared. Ctrl+L shortcut still works (toggled EN→AR→RTL live). All 11 shortcuts now in the editor (Space, P, R, Ctrl+L, Ctrl+D, W, M, A, S, C, V).
+- **VLM verdict (round 9):** Overall layout very polished, modern, and premium ✓; clean dark theme, consistent spacing, clear typography, professional UI structure; no visible bugs or layout breaks.
+- **Files changed:** `src/lib/i18n.ts`, `src/lib/shortcuts.ts`, `src/hooks/use-recorder.ts`, `src/components/recorder/scheduler.tsx`, `src/components/recorder/shortcut-editor.tsx`, `src/components/recorder/shortcuts-dialog.tsx`, `src/components/recorder/history-panel.tsx`, `src/app/page.tsx`.
+
+### Remaining recommendations for next phase
+1. **Persist history to IndexedDB** — currently in-memory only; could persist across sessions with IndexedDB.
+2. **Annotation persistence** — persist annotations across recordings or allow exporting them.
+3. **Manual real-browser recording validation** — test the full workflow in Chrome (cannot be done in headless).
+4. **Custom watermark text/logo** — let users customize the watermark text or upload a logo.
+5. **Recording format conversion** — client-side WebM→MP4 conversion (if feasible without backend).

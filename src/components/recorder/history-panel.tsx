@@ -1,9 +1,10 @@
 "use client";
 
-import { History, Download, Trash2, Play, RotateCcw, Clock, HardDrive, Film } from "lucide-react";
+import { History, Download, Trash2, Play, RotateCcw, Clock, HardDrive, Film, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatBytes, formatDuration, mimeToLabel } from "@/lib/recorder-utils";
+import { useToast } from "@/hooks/use-toast";
 import type { UseRecorder } from "@/hooks/use-recorder";
 import type { Lang } from "@/lib/i18n";
 
@@ -15,6 +16,7 @@ type Props = {
 
 export function HistoryPanel({ rec, lang, t }: Props) {
   const entries = rec.history;
+  const { toast } = useToast();
 
   if (entries.length === 0) return null;
 
@@ -34,6 +36,34 @@ export function HistoryPanel({ rec, lang, t }: Props) {
           <Badge variant="secondary" className="gap-1">
             {entries.length} {t("historyCount")}
           </Badge>
+          {/* Round 9: manifest export */}
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={async () => {
+                const ok = await rec.copyManifest();
+                toast({ description: ok ? t("manifestCopied") : t("manifestEmpty") });
+              }}
+              disabled={entries.length === 0}
+              title={t("manifestCopy")}
+            >
+              <Copy className="size-3" />
+              <span className="hidden sm:inline">{t("manifestCopy")}</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={rec.downloadManifest}
+              disabled={entries.length === 0}
+              title={t("manifestDownload")}
+            >
+              <Download className="size-3" />
+              <span className="hidden sm:inline">{t("manifestDownload")}</span>
+            </Button>
+          </div>
           <Button
             variant="ghost"
             size="icon"

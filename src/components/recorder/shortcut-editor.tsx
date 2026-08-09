@@ -51,6 +51,10 @@ export function ShortcutEditor({ lang, t, shortcuts, onChange, onReset }: Props)
     { action: "toggleTheme", label: t("shortcutToggleTheme") },
     { action: "toggleWebcam", label: t("shortcutToggleWebcam") },
     { action: "toggleMic", label: t("shortcutToggleMic") },
+    { action: "toggleAnnotations", label: t("shortcutToggleAnnotations") },
+    { action: "toggleScheduler", label: t("shortcutToggleScheduler") },
+    { action: "captureSnapshot", label: t("shortcutCaptureSnapshot") },
+    { action: "captureClip", label: t("shortcutCaptureClip") },
   ];
 
   // Capture key presses while editing a binding.

@@ -59,7 +59,18 @@ export default function Home() {
   const rec = useRecorder(lang, canvasRef, annotations.drawAnnotations);
   const { toast } = useToast();
   const { setTheme, resolvedTheme } = useTheme();
-
+  // Round 9: auto-stop + scheduler toggle state
+  const [autoStopMs, setAutoStopMs] = useState<number>(0); // 0 = disabled
+  const [schedulerEnabled, setSchedulerEnabled] = useState(false);
+  // Refs for keyboard handler access
+  const annotationsRef = useRef(annotations);
+  useEffect(() => {
+    annotationsRef.current = annotations;
+  }, [annotations]);
+  const recRef = useRef(rec);
+  useEffect(() => {
+    recRef.current = rec;
+  }, [rec]);
   // Load persisted language + shortcuts on mount (client-only to avoid hydration mismatch).
   useEffect(() => {
     const persisted = loadLang();
@@ -163,11 +174,35 @@ export default function Home() {
       } else if (matches("toggleMic")) {
         e.preventDefault();
         rec.updateSettings("micEnabled", !rec.settings.micEnabled);
+      } else if (matches("toggleAnnotations")) {
+        e.preventDefault();
+        if (rec.isRecording || rec.isPaused) {
+          annotationsRef.current.updateSettings("enabled", !annotationsRef.current.settings.enabled);
+        }
+      } else if (matches("toggleScheduler")) {
+        e.preventDefault();
+        setSchedulerEnabled((v) => !v);
+      } else if (matches("captureSnapshot")) {
+        e.preventDefault();
+        if (rec.isRecording || rec.isPaused) rec.captureSnapshot();
+      } else if (matches("captureClip")) {
+        e.preventDefault();
+        if (rec.isRecording || rec.isPaused) rec.captureClip();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [shortcuts, rec, toggleLang, toggleTheme]);
+
+  // Round 9: auto-stop effect — stop recording when elapsed reaches the limit.
+  useEffect(() => {
+    if (autoStopMs <= 0 || !rec.isRecording) return;
+    if (rec.elapsed * 1000 >= autoStopMs) {
+      rec.stopRecording();
+      setAutoStopMs(0);
+      toast({ description: t("autoStopTriggered") });
+    }
+  }, [autoStopMs, rec.isRecording, rec.elapsed, rec.stopRecording, t, toast]);
 
   // Browser recommendation banner
   const [showBanner, setShowBanner] = useState(false);
@@ -252,6 +287,10 @@ export default function Home() {
                 canStart={rec.canStart}
                 onStartNow={() => void rec.startRecording()}
                 onStop={() => rec.stopRecording()}
+                enabled={schedulerEnabled}
+                onEnabledChange={setSchedulerEnabled}
+                onAutoStopChange={setAutoStopMs}
+                elapsed={rec.elapsed}
               />
             </div>
           </div>

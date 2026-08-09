@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { formatDuration } from "@/lib/recorder-utils";
 import type { Lang } from "@/lib/i18n";
 
 type Props = {
@@ -18,10 +19,25 @@ type Props = {
   canStart: boolean;
   onStartNow: () => void;
   onStop: () => void;
+  enabled: boolean;
+  onEnabledChange: (v: boolean) => void;
+  onAutoStopChange: (ms: number) => void;
+  elapsed: number;
 };
 
-export function Scheduler({ lang, t, isRecording, isPaused, canStart, onStartNow, onStop }: Props) {
-  const [enabled, setEnabled] = useState(false);
+export function Scheduler({
+  lang,
+  t,
+  isRecording,
+  isPaused,
+  canStart,
+  onStartNow,
+  onStop,
+  enabled,
+  onEnabledChange,
+  onAutoStopChange,
+  elapsed,
+}: Props) {
   const [startAt, setStartAt] = useState<string>("");
   const [maxDuration, setMaxDuration] = useState(0); // 0 = unlimited (minutes)
   const [scheduled, setScheduled] = useState(false);
@@ -90,7 +106,7 @@ export function Scheduler({ lang, t, isRecording, isPaused, canStart, onStartNow
         </div>
         <Switch
           checked={enabled}
-          onCheckedChange={setEnabled}
+          onCheckedChange={onEnabledChange}
           disabled={isRecording || isPaused}
           aria-label={t("schedulerEnabled")}
         />
@@ -164,13 +180,25 @@ export function Scheduler({ lang, t, isRecording, isPaused, canStart, onStartNow
               min={0}
               max={60}
               step={1}
-              onValueChange={(v) => setMaxDuration(v[0])}
+              onValueChange={(v) => {
+                setMaxDuration(v[0]);
+                onAutoStopChange(v[0] * 60000);
+              }}
               disabled={isRecording || isPaused}
             />
             {maxDuration > 0 && (
               <p className="mt-1.5 text-[10px] text-muted-foreground">
                 {t("schedulerAutoStop")} · {maxDuration} {t("schedulerMinutes")}
               </p>
+            )}
+            {/* Round 9: auto-stop live indicator */}
+            {maxDuration > 0 && isRecording && (
+              <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2 py-1">
+                <Timer className="size-3 text-amber-500" />
+                <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                  {t("autoStopIn")} {formatDuration(Math.max(0, maxDuration * 60 - elapsed))}
+                </span>
+              </div>
             )}
           </div>
 

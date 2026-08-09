@@ -391,6 +391,23 @@ const en: Dict = {
   schedulerDate: "Date",
   schedulerTime: "Time",
   schedulerNow: "Start now",
+
+  // Round 9 — auto-stop, manifest export, new shortcuts
+  autoStopTitle: "Auto-stop",
+  autoStopActive: "Auto-stop active",
+  autoStopIn: "Auto-stop in",
+  autoStopTriggered: "Auto-stop: duration limit reached",
+  manifestTitle: "Export manifest",
+  manifestDesc: "Download a JSON manifest of all recordings in history.",
+  manifestEmpty: "No recordings to export yet.",
+  manifestDownload: "Download manifest",
+  manifestCopy: "Copy manifest",
+  manifestExported: "Manifest exported",
+  manifestCopied: "Manifest copied to clipboard",
+  shortcutToggleAnnotations: "Toggle annotations",
+  shortcutToggleScheduler: "Toggle scheduler",
+  shortcutCaptureSnapshot: "Capture snapshot",
+  shortcutCaptureClip: "Capture clip",
 };
 
 const ar: Dict = {
@@ -769,6 +786,23 @@ const ar: Dict = {
   schedulerDate: "التاريخ",
   schedulerTime: "الوقت",
   schedulerNow: "ابدأ الآن",
+
+  // Round 9 — auto-stop, manifest export, new shortcuts
+  autoStopTitle: "إيقاف تلقائي",
+  autoStopActive: "الإيقاف التلقائي مُفعّل",
+  autoStopIn: "إيقاف تلقائي خلال",
+  autoStopTriggered: "إيقاف تلقائي: بلوغ الحد الأقصى للمدة",
+  manifestTitle: "تصدير البيان",
+  manifestDesc: "نزّل بيان JSON لجميع التسجيلات في السجل.",
+  manifestEmpty: "لا توجد تسجيلات للتصدير بعد.",
+  manifestDownload: "تنزيل البيان",
+  manifestCopy: "نسخ البيان",
+  manifestExported: "تم تصدير البيان",
+  manifestCopied: "تم نسخ البيان إلى الحافظة",
+  shortcutToggleAnnotations: "تبديل التعليقات التوضيحية",
+  shortcutToggleScheduler: "تبديل المجدول",
+  shortcutCaptureSnapshot: "التقاط لقطة",
+  shortcutCaptureClip: "التقاط مقطع",
 };
 
 export const dictionaries: Record<Lang, Dict> = { en, ar };

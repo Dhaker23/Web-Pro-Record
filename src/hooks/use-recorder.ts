@@ -1870,6 +1870,52 @@ export function useRecorder(
     }
   }, [exportStatsJson]);
 
+  /** Round 9: Export a JSON manifest of all recordings in history. */
+  const exportManifestJson = useCallback((): string => {
+    const payload = {
+      app: "Web Pro Record",
+      exportedAt: new Date().toISOString(),
+      language: langRef.current,
+      recordingCount: history.length,
+      recordings: history.map((e) => ({
+        id: e.id,
+        createdAt: new Date(e.createdAt).toISOString(),
+        duration: e.duration,
+        size: e.size,
+        mimeType: e.mimeType,
+        codec: e.codec,
+        width: e.width,
+        height: e.height,
+      })),
+    };
+    return JSON.stringify(payload, null, 2);
+  }, [history]);
+
+  /** Download the manifest JSON as a file. */
+  const downloadManifest = useCallback(() => {
+    const json = exportManifestJson();
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    a.download = `wpr-manifest-${ts}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [exportManifestJson]);
+
+  /** Copy the manifest JSON to the clipboard. */
+  const copyManifest = useCallback(async (): Promise<boolean> => {
+    try {
+      await navigator.clipboard.writeText(exportManifestJson());
+      return true;
+    } catch {
+      return false;
+    }
+  }, [exportManifestJson]);
+
   // ---------------- Derived ----------------
 
   const previewMode: PreviewMode = (() => {
@@ -1949,6 +1995,10 @@ export function useRecorder(
     exportStatsJson,
     downloadStatsJson,
     copyStatsJson,
+    // Round 9 actions — manifest export
+    exportManifestJson,
+    downloadManifest,
+    copyManifest,
     // Round 7 state
     profiling,
     showProfiling,

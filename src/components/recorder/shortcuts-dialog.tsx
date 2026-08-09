@@ -34,6 +34,10 @@ export function ShortcutsDialog({ lang, t }: Props) {
     { keys: [mod, "D"], label: t("shortcutToggleTheme") },
     { keys: ["W"], label: t("shortcutToggleWebcam") },
     { keys: ["M"], label: t("shortcutToggleMic") },
+    { keys: ["A"], label: t("shortcutToggleAnnotations") },
+    { keys: ["S"], label: t("shortcutToggleScheduler") },
+    { keys: ["C"], label: t("shortcutCaptureSnapshot") },
+    { keys: ["V"], label: t("shortcutCaptureClip") },
     { keys: ["?"], label: t("showShortcuts") },
     { keys: ["Esc"], label: t("shortcutClose") },
   ];
