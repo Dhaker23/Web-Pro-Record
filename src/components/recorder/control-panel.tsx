@@ -347,6 +347,20 @@ export function ControlPanel({ rec, lang, t }: Props) {
               </div>
             </div>
           ) : null}
+
+          {/* Adaptive FPS toggle */}
+          <label className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-card/40 px-3 py-2">
+            <div className="min-w-0">
+              <div className="text-xs font-medium">{t("adaptiveFps")}</div>
+              <div className="text-[10px] text-muted-foreground">{t("adaptiveFpsHint")}</div>
+            </div>
+            <Switch
+              checked={settings.adaptiveFps}
+              onCheckedChange={(v) => rec.updateSettings("adaptiveFps", v)}
+              disabled={disabled}
+              aria-label={t("adaptiveFps")}
+            />
+          </label>
         </div>
       </SectionCard>
 

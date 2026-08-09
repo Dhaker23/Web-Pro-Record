@@ -43,6 +43,12 @@ export type LiveStats = {
   audioActive: boolean;
 };
 
+/** Time-domain audio samples for waveform rendering (Uint8, 0..255, 128 = silence). */
+export type WaveformData = {
+  samples: Uint8Array;
+  level: number;
+};
+
 export type RecordingResult = {
   url: string;
   blob: Blob;
@@ -71,6 +77,7 @@ export type RecorderSettings = {
   countdownSeconds: number;
   videoBitrate: number; // 0 = auto
   audioBitrate: number; // 0 = auto
+  adaptiveFps: boolean; // auto-reduce FPS if device can't keep up
 };
 
 export type RecorderError = { kind: string; message: string } | null;
@@ -92,6 +99,7 @@ const DEFAULT_SETTINGS: RecorderSettings = {
   countdownSeconds: 3,
   videoBitrate: 0,
   audioBitrate: 0,
+  adaptiveFps: true,
 };
 
 // --- Safe persistence (localStorage may be blocked; never throw) ---
@@ -112,6 +120,7 @@ type PersistablePrefs = Pick<
   | "countdownSeconds"
   | "videoBitrate"
   | "audioBitrate"
+  | "adaptiveFps"
 >;
 
 function loadPrefs(): Partial<PersistablePrefs> | null {
@@ -151,6 +160,7 @@ const PERSISTABLE_KEYS: (keyof PersistablePrefs)[] = [
   "countdownSeconds",
   "videoBitrate",
   "audioBitrate",
+  "adaptiveFps",
 ];
 
 export function useRecorder(
@@ -189,6 +199,11 @@ export function useRecorder(
     audioActive: false,
   });
   const [pipActive, setPipActive] = useState(false);
+  // Round 4 state
+  const [waveform, setWaveform] = useState<WaveformData>({ samples: new Uint8Array(0), level: 0 });
+  const [actualFps, setActualFps] = useState(0);
+  const [fpsDowngraded, setFpsDowngraded] = useState(false);
+  const [effectiveFps, setEffectiveFps] = useState<FrameRate | null>(null);
 
   // Exposed streams for preview elements
   const [webcamStream, setWebcamStream] = useState<MediaStream | null>(null);
@@ -224,6 +239,13 @@ export function useRecorder(
   const lastFpsTimeRef = useRef<number>(0);
   const lastFpsRef = useRef<number>(0);
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
+  // Round 4 refs — real FPS measurement + adaptive downgrade + waveform
+  const renderFrameCountRef = useRef<number>(0);
+  const fpsMeasureRafRef = useRef<number | null>(null);
+  const lastFpsMeasureRef = useRef<number>(0);
+  const effectiveFpsRef = useRef<FrameRate | null>(null);
+  const downgradeCheckRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const waveformRafRef = useRef<number | null>(null);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -334,6 +356,24 @@ export function useRecorder(
       clearInterval(statsTimerRef.current);
       statsTimerRef.current = null;
     }
+    // Round 4: stop FPS measurement, waveform, adaptive check
+    if (fpsMeasureRafRef.current != null) {
+      cancelAnimationFrame(fpsMeasureRafRef.current);
+      fpsMeasureRafRef.current = null;
+    }
+    if (waveformRafRef.current != null) {
+      cancelAnimationFrame(waveformRafRef.current);
+      waveformRafRef.current = null;
+    }
+    if (downgradeCheckRef.current) {
+      clearInterval(downgradeCheckRef.current);
+      downgradeCheckRef.current = null;
+    }
+    setActualFps(0);
+    setFpsDowngraded(false);
+    setEffectiveFps(null);
+    effectiveFpsRef.current = null;
+    setWaveform({ samples: new Uint8Array(0), level: 0 });
     // Exit PiP if active
     if (typeof document !== "undefined" && document.pictureInPictureElement) {
       try {
@@ -647,12 +687,66 @@ export function useRecorder(
 
   const startRenderLoop = useCallback(() => {
     stopRaf();
-    const loop = () => {
-      renderCompositeFrame();
+    renderFrameCountRef.current = 0;
+    lastFpsMeasureRef.current = performance.now();
+    // Throttle drawing to the effective FPS (adaptive downgrade support).
+    let lastDraw = 0;
+    const loop = (now: number) => {
+      const targetFps = Number(effectiveFpsRef.current ?? settingsRef.current.frameRate);
+      const interval = 1000 / targetFps;
+      if (now - lastDraw >= interval) {
+        renderCompositeFrame();
+        renderFrameCountRef.current += 1;
+        lastDraw = now;
+      }
       rafRef.current = requestAnimationFrame(loop);
     };
-    loop();
+    rafRef.current = requestAnimationFrame(loop);
   }, [stopRaf, renderCompositeFrame]);
+
+  /** Measure actual render FPS over a 1s window via a separate rAF. */
+  const startFpsMeasurement = useCallback(() => {
+    if (fpsMeasureRafRef.current != null) return;
+    const measure = () => {
+      const now = performance.now();
+      const elapsed = now - lastFpsMeasureRef.current;
+      if (elapsed >= 1000) {
+        const fps = Math.round((renderFrameCountRef.current * 1000) / elapsed);
+        setActualFps(fps);
+        lastFpsRef.current = fps;
+        renderFrameCountRef.current = 0;
+        lastFpsMeasureRef.current = now;
+      }
+      fpsMeasureRafRef.current = requestAnimationFrame(measure);
+    };
+    fpsMeasureRafRef.current = requestAnimationFrame(measure);
+  }, []);
+
+  /** Stop FPS measurement. */
+  const stopFpsMeasurement = useCallback(() => {
+    if (fpsMeasureRafRef.current != null) {
+      cancelAnimationFrame(fpsMeasureRafRef.current);
+      fpsMeasureRafRef.current = null;
+    }
+    setActualFps(0);
+  }, []);
+
+  /** Check if FPS is too low and auto-downgrade the effective frame rate. */
+  const checkAdaptiveFps = useCallback(() => {
+    const s = settingsRef.current;
+    if (!s.adaptiveFps) return;
+    const target = Number(effectiveFpsRef.current ?? s.frameRate);
+    const measured = lastFpsRef.current;
+    // If we're achieving less than 70% of target and target > 24, downgrade.
+    if (target > 24 && measured > 0 && measured < target * 0.7) {
+      const downgraded: FrameRate = target >= 60 ? "30" : "24";
+      if (effectiveFpsRef.current !== downgraded) {
+        effectiveFpsRef.current = downgraded;
+        setEffectiveFps(downgraded);
+        setFpsDowngraded(true);
+      }
+    }
+  }, []);
 
   // Idle webcam preview: draw a placeholder + webcam to the canvas so the user
   // sees overlay positioning. Only when webcam enabled and not recording.
@@ -748,6 +842,43 @@ export function useRecorder(
       micLevelRafRef.current = requestAnimationFrame(loop);
     };
     loop();
+  }, []);
+
+  /** Round 4: waveform loop — captures time-domain samples for visualization. */
+  const startWaveformLoop = useCallback(() => {
+    const analyser = analyserRef.current;
+    if (!analyser) return;
+    // Downsample to 64 samples for a compact waveform.
+    const targetSize = 64;
+    const buf = new Uint8Array(analyser.fftSize);
+    const loop = () => {
+      analyser.getByteTimeDomainData(buf);
+      // Resample to targetSize by averaging.
+      const out = new Uint8Array(targetSize);
+      const step = Math.floor(buf.length / targetSize);
+      let maxLevel = 0;
+      for (let i = 0; i < targetSize; i++) {
+        let sum = 0;
+        for (let j = 0; j < step; j++) {
+          sum += buf[i * step + j];
+        }
+        const avg = sum / step;
+        out[i] = avg;
+        const dev = Math.abs(avg - 128) / 128;
+        if (dev > maxLevel) maxLevel = dev;
+      }
+      setWaveform({ samples: out, level: maxLevel });
+      waveformRafRef.current = requestAnimationFrame(loop);
+    };
+    loop();
+  }, []);
+
+  const stopWaveformLoop = useCallback(() => {
+    if (waveformRafRef.current != null) {
+      cancelAnimationFrame(waveformRafRef.current);
+      waveformRafRef.current = null;
+    }
+    setWaveform({ samples: new Uint8Array(0), level: 0 });
   }, []);
 
   // ---------------- Audio mixing ----------------
@@ -1188,6 +1319,23 @@ export function useRecorder(
           clearInterval(statsTimerRef.current);
           statsTimerRef.current = null;
         }
+        if (fpsMeasureRafRef.current != null) {
+          cancelAnimationFrame(fpsMeasureRafRef.current);
+          fpsMeasureRafRef.current = null;
+        }
+        if (waveformRafRef.current != null) {
+          cancelAnimationFrame(waveformRafRef.current);
+          waveformRafRef.current = null;
+        }
+        if (downgradeCheckRef.current) {
+          clearInterval(downgradeCheckRef.current);
+          downgradeCheckRef.current = null;
+        }
+        setActualFps(0);
+        setFpsDowngraded(false);
+        setEffectiveFps(null);
+        effectiveFpsRef.current = null;
+        setWaveform({ samples: new Uint8Array(0), level: 0 });
         if (sVideo) sVideo.srcObject = null;
         // Restart idle webcam preview if still enabled
         if (settingsRef.current.webcamEnabled && webcamStreamRef.current) {
@@ -1205,12 +1353,23 @@ export function useRecorder(
       startTimer();
       ensurePipVideo();
       startStatsLoop();
-      if (analyserRef.current) startMicLevelLoop();
+      // Round 4: FPS measurement + adaptive downgrade + waveform
+      if (useCanvas) {
+        startFpsMeasurement();
+        // Check adaptive FPS every 3s after a 4s warmup.
+        downgradeCheckRef.current = setInterval(() => {
+          checkAdaptiveFps();
+        }, 3000);
+      }
+      if (analyserRef.current) {
+        startMicLevelLoop();
+        startWaveformLoop();
+      }
     } catch (e) {
       setError({ kind: "generic", message: "errGeneric" });
       cleanupMedia();
     }
-  }, [canvasRef, features, ensureHiddenVideos, runCountdown, buildMixedAudio, startRenderLoop, startTimer, startMicLevelLoop, startIdlePreviewLoop, selectedMicId, cleanupMedia, ensurePipVideo, startStatsLoop]);
+  }, [canvasRef, features, ensureHiddenVideos, runCountdown, buildMixedAudio, startRenderLoop, startTimer, startMicLevelLoop, startWaveformLoop, startIdlePreviewLoop, selectedMicId, cleanupMedia, ensurePipVideo, startStatsLoop, startFpsMeasurement, checkAdaptiveFps]);
 
   const pauseRecording = useCallback(() => {
     const rec = mediaRecorderRef.current;
@@ -1224,8 +1383,10 @@ export function useRecorder(
       pauseTimer();
       stopMicLevelLoop();
       stopStatsLoop();
+      stopWaveformLoop();
+      stopFpsMeasurement();
     }
-  }, [pauseTimer, stopMicLevelLoop, stopStatsLoop]);
+  }, [pauseTimer, stopMicLevelLoop, stopStatsLoop, stopWaveformLoop, stopFpsMeasurement]);
 
   const resumeRecording = useCallback(() => {
     const rec = mediaRecorderRef.current;
@@ -1238,9 +1399,13 @@ export function useRecorder(
       setStatus("recording");
       resumeTimer();
       startStatsLoop();
-      if (analyserRef.current) startMicLevelLoop();
+      startFpsMeasurement();
+      if (analyserRef.current) {
+        startMicLevelLoop();
+        startWaveformLoop();
+      }
     }
-  }, [resumeTimer, startMicLevelLoop, startStatsLoop]);
+  }, [resumeTimer, startMicLevelLoop, startStatsLoop, startWaveformLoop, startFpsMeasurement]);
 
   // ---------------- Reset / actions ----------------
 
@@ -1355,6 +1520,11 @@ export function useRecorder(
     snapshots,
     liveStats,
     pipActive,
+    // Round 4 state
+    waveform,
+    actualFps,
+    fpsDowngraded,
+    effectiveFps,
     // Round 3 actions
     setWebcamFreePos,
     captureSnapshot,

@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { RecordingTimeline } from "@/components/recorder/recording-timeline";
 import type { UseRecorder } from "@/hooks/use-recorder";
 import type { Lang } from "@/lib/i18n";
 
@@ -88,7 +89,7 @@ export function FinalRecording({ rec, lang, t }: Props) {
   };
 
   return (
-    <Card className="overflow-hidden border-border/60 p-0 shadow-sm">
+    <Card className="fade-up overflow-hidden border-border/60 p-0 shadow-sm">
       <div className="flex items-center justify-between gap-2 border-b border-border/50 bg-muted/30 px-4 py-3">
         <div className="flex items-center gap-2.5">
           <div className="grid size-7 place-items-center rounded-lg bg-emerald-500/15 text-emerald-500">
@@ -124,6 +125,13 @@ export function FinalRecording({ rec, lang, t }: Props) {
             <Maximize className="size-4" />
           </Button>
         </div>
+
+        {/* Timeline with snapshot markers */}
+        {rec.snapshots.length > 0 && (
+          <div className="mt-4">
+            <RecordingTimeline rec={rec} lang={lang} t={t} />
+          </div>
+        )}
 
         {/* Details */}
         <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">

@@ -16,6 +16,27 @@ import { Footer } from "@/components/recorder/footer";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
+const LANG_KEY = "wpr-lang-v1";
+
+function loadLang(): Lang {
+  if (typeof window === "undefined") return "en";
+  try {
+    const v = window.localStorage.getItem(LANG_KEY);
+    return v === "ar" || v === "en" ? v : "en";
+  } catch {
+    return "en";
+  }
+}
+
+function saveLang(l: Lang): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LANG_KEY, l);
+  } catch {
+    /* ignore */
+  }
+}
+
 export default function Home() {
   const [lang, setLang] = useState<Lang>("en");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -23,10 +44,20 @@ export default function Home() {
   const { toast } = useToast();
   const { setTheme, resolvedTheme } = useTheme();
 
+  // Load persisted language on mount (client-only to avoid hydration mismatch).
+  useEffect(() => {
+    const persisted = loadLang();
+    if (persisted !== "en") setLang(persisted);
+  }, []);
+
   const t = useCallback((key: string) => translate(lang, key), [lang]);
 
   const toggleLang = useCallback(() => {
-    setLang((l) => (l === "en" ? "ar" : "en"));
+    setLang((l) => {
+      const next = l === "en" ? "ar" : "en";
+      saveLang(next);
+      return next;
+    });
   }, []);
 
   const toggleTheme = useCallback(() => {

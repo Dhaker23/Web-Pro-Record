@@ -243,6 +243,21 @@ const en: Dict = {
   statAudio: "Audio",
   pipUnsupported: "Picture-in-picture is not supported in this browser.",
   snapshotsCount: "snapshots",
+
+  // Round 4 — adaptive FPS, waveform, timeline, persistence
+  adaptiveFps: "Adaptive FPS",
+  adaptiveFpsHint: "Auto-reduce frame rate if the device can't keep up.",
+  actualFps: "Actual FPS",
+  fpsDowngraded: "Frame rate reduced for stability",
+  waveform: "Waveform",
+  waveformMic: "Microphone waveform",
+  timeline: "Timeline",
+  timelineHint: "Snapshot markers are shown on the timeline.",
+  noSnapshotsOnTimeline: "No snapshot markers yet.",
+  langPreference: "Language preference saved",
+  themePreference: "Theme preference saved",
+  studioMode: "Studio mode",
+  idleHint: "Enable sources to see a live preview here.",
 };
 
 const ar: Dict = {
@@ -473,6 +488,21 @@ const ar: Dict = {
   statAudio: "الصوت",
   pipUnsupported: "صورة داخل صورة غير مدعومة في هذا المتصفح.",
   snapshotsCount: "لقطات",
+
+  // Round 4 — adaptive FPS, waveform, timeline, persistence
+  adaptiveFps: "معدل إطارات تكيّفي",
+  adaptiveFpsHint: "تقليل معدل الإطارات تلقائيًا إذا لم يواكب الجهاز.",
+  actualFps: "الإطارات الفعلية",
+  fpsDowngraded: "تم تقليل معدل الإطارات للاستقرار",
+  waveform: "الموجة",
+  waveformMic: "موجة الميكروفون",
+  timeline: "الخط الزمني",
+  timelineHint: "تُعرض علامات اللقطات على الخط الزمني.",
+  noSnapshotsOnTimeline: "لا توجد علامات لقطات بعد.",
+  langPreference: "تم حفظ تفضيل اللغة",
+  themePreference: "تم حفظ تفضيل المظهر",
+  studioMode: "وضع الاستوديو",
+  idleHint: "فعّل المصادر لرؤية معاينة مباشرة هنا.",
 };
 
 export const dictionaries: Record<Lang, Dict> = { en, ar };

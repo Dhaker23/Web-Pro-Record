@@ -16,11 +16,14 @@ import {
   Activity,
   HardDrive,
   Timer,
+  Gauge,
+  TrendingDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatBytes, formatDuration } from "@/lib/recorder-utils";
+import { WaveformViz } from "@/components/recorder/waveform-viz";
 import type { UseRecorder } from "@/hooks/use-recorder";
 import type { Lang } from "@/lib/i18n";
 
@@ -233,7 +236,10 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
         ref={wrapperRef}
         role="region"
         aria-label={t("ariaPreview")}
-        className="preview-inset relative aspect-video w-full overflow-hidden rounded-2xl border border-border/60 bg-[#0b0f10]"
+        className={cn(
+          "preview-inset relative aspect-video w-full overflow-hidden rounded-2xl border bg-[#0b0f10] transition-shadow",
+          rec.isRecording ? "border-red-500/50 rec-glow" : "border-border/60",
+        )}
       >
         {/* Empty state — recessed viewport with wireframe monitor */}
         {isEmpty && <div className="dot-grid absolute inset-0 opacity-25" />}
@@ -342,7 +348,17 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
             <span className="h-3 w-px bg-white/15" />
             <Stat icon={HardDrive} label={t("statSize")} value={formatBytes(rec.liveStats.estimatedBytes)} />
             <span className="h-3 w-px bg-white/15" />
-            <Stat icon={Activity} label={t("statFps")} value={`${rec.liveStats.fps}`} />
+            <Stat
+              icon={Gauge}
+              label={t("statFps")}
+              value={rec.actualFps > 0 ? `${rec.actualFps}` : `${rec.liveStats.fps}`}
+            />
+            {rec.fpsDowngraded && (
+              <span className="flex items-center gap-1 rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-amber-300">
+                <TrendingDown className="size-2.5" />
+                {rec.effectiveFps}
+              </span>
+            )}
           </div>
         )}
 
@@ -370,16 +386,34 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
         )}
       </div>
 
-      {/* Hint line */}
-      <p className="text-xs text-muted-foreground">
-        {rec.previewMode === "composite"
-          ? t("compositeHint")
-          : rec.previewMode === "direct"
-            ? t("directHint")
-            : rec.previewMode === "webcam-idle"
-              ? t("previewWebcamHint")
-              : t("previewEmpty")}
-      </p>
+      {/* Hint line + FPS downgrade notice */}
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          {rec.previewMode === "composite"
+            ? t("compositeHint")
+            : rec.previewMode === "direct"
+              ? t("directHint")
+              : rec.previewMode === "webcam-idle"
+                ? t("previewWebcamHint")
+                : t("previewEmpty")}
+        </p>
+        {rec.fpsDowngraded && (
+          <span className="flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+            <TrendingDown className="size-3" />
+            {t("fpsDowngraded")}
+          </span>
+        )}
+      </div>
+
+      {/* Waveform (during recording with mic) */}
+      {(rec.isRecording || rec.isPaused) && rec.settings.micEnabled && (
+        <WaveformViz
+          waveform={rec.waveform}
+          active={rec.isRecording}
+          lang={lang}
+          t={t}
+        />
+      )}
     </div>
   );
 }
