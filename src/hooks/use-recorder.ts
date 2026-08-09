@@ -388,8 +388,13 @@ export function useRecorder(
     statusRef.current = status;
   }, [status]);
 
-  // Negotiated MIME type (best supported by this browser). Stable for the session.
-  const negotiatedMime = useMemo(() => pickMimeType(), []);
+  // Negotiated MIME type (best supported by this browser).
+  // Computed client-side after mount to avoid SSR/CSR hydration mismatch
+  // (MediaRecorder doesn't exist on the server).
+  const [negotiatedMime, setNegotiatedMime] = useState("");
+  useEffect(() => {
+    setNegotiatedMime(pickMimeType());
+  }, []);
 
   // Persist a safe subset of settings to localStorage whenever they change.
   useEffect(() => {
