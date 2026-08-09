@@ -247,12 +247,9 @@ export function useRecorder(
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<RecorderError>(null);
   const [warning, setWarning] = useState<string | null>(null);
-  const [settings, setSettings] = useState<RecorderSettings>(() => {
-    const prefs = loadPrefs();
-    if (!prefs) return DEFAULT_SETTINGS;
-    // Merge persisted prefs over defaults (validate primitive types loosely).
-    return { ...DEFAULT_SETTINGS, ...prefs } as RecorderSettings;
-  });
+  // Always start with defaults to avoid SSR/CSR hydration mismatch.
+  // Persisted prefs are loaded in a useEffect after mount.
+  const [settings, setSettings] = useState<RecorderSettings>(DEFAULT_SETTINGS);
   const [result, setResult] = useState<RecordingResult>(null);
   const [devices, setDevices] = useState<{ cameras: MediaDeviceInfo[]; mics: MediaDeviceInfo[] }>({
     cameras: [],
@@ -351,6 +348,14 @@ export function useRecorder(
   useEffect(() => {
     langRef.current = lang;
   }, [lang]);
+
+  // Load persisted prefs after mount (client-only, avoids hydration mismatch).
+  useEffect(() => {
+    const prefs = loadPrefs();
+    if (prefs) {
+      setSettings((prev) => ({ ...prev, ...prefs }));
+    }
+  }, []);
 
   // Round 11: load watermark logo image when data URL changes.
   useEffect(() => {
