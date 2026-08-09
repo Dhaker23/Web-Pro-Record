@@ -216,6 +216,7 @@ const PERSISTABLE_KEYS: (keyof PersistablePrefs)[] = [
 export function useRecorder(
   lang: "en" | "ar",
   canvasRef: RefObject<HTMLCanvasElement | null>,
+  drawAnnotations?: ((ctx: CanvasRenderingContext2D) => void) | null,
 ) {
   // --- UI state ---
   const [status, setStatus] = useState<RecStatus>("idle");
@@ -766,7 +767,16 @@ export function useRecorder(
     }
 
     if (s.watermark) drawWatermark(ctx, W, H, rtl);
-  }, [canvasRef]);
+
+    // Round 8: draw annotations on top of everything.
+    if (drawAnnotations) {
+      try {
+        drawAnnotations(ctx);
+      } catch {
+        /* ignore annotation errors */
+      }
+    }
+  }, [canvasRef, drawAnnotations]);
 
   const startRenderLoop = useCallback(() => {
     stopRaf();

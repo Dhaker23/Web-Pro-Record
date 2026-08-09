@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { AlertTriangle, X, Radio } from "lucide-react";
 import { useRecorder } from "@/hooks/use-recorder";
+import { useAnnotations } from "@/hooks/use-annotations";
 import { translate, isRtl, type Lang } from "@/lib/i18n";
 import {
   type ShortcutMap,
@@ -22,6 +23,8 @@ import { ClipsGallery } from "@/components/recorder/clips-gallery";
 import { StatsSummary } from "@/components/recorder/stats-summary";
 import { ProfilingPanel } from "@/components/recorder/profiling-panel";
 import { HistoryPanel } from "@/components/recorder/history-panel";
+import { AnnotationToolbar } from "@/components/recorder/annotation-toolbar";
+import { Scheduler } from "@/components/recorder/scheduler";
 import { HelpSection } from "@/components/recorder/help-section";
 import { Footer } from "@/components/recorder/footer";
 import { Button } from "@/components/ui/button";
@@ -52,7 +55,8 @@ export default function Home() {
   const [lang, setLang] = useState<Lang>("en");
   const [shortcuts, setShortcuts] = useState<ShortcutMap>(DEFAULT_SHORTCUTS);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const rec = useRecorder(lang, canvasRef);
+  const annotations = useAnnotations();
+  const rec = useRecorder(lang, canvasRef, annotations.drawAnnotations);
   const { toast } = useToast();
   const { setTheme, resolvedTheme } = useTheme();
 
@@ -236,14 +240,41 @@ export default function Home() {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(340px,400px)_1fr]">
-          {/* Left: control panel */}
+          {/* Left: control panel + scheduler */}
           <div className="lg:sticky lg:top-20 lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1 scroll-thin">
             <ControlPanel rec={rec} lang={lang} t={t} />
+            <div className="mt-4">
+              <Scheduler
+                lang={lang}
+                t={t}
+                isRecording={rec.isRecording}
+                isPaused={rec.isPaused}
+                canStart={rec.canStart}
+                onStartNow={() => void rec.startRecording()}
+                onStop={() => rec.stopRecording()}
+              />
+            </div>
           </div>
 
           {/* Right: preview + galleries + final + stats + profiling + history */}
           <div className="flex flex-col gap-6">
-            <LivePreview rec={rec} lang={lang} t={t} canvasRef={canvasRef} />
+            <LivePreview
+              rec={rec}
+              lang={lang}
+              t={t}
+              canvasRef={canvasRef}
+              annotations={annotations}
+            />
+            {(rec.isRecording || rec.isPaused) && annotations.settings.enabled && (
+              <div className="flex items-center justify-between gap-2">
+                <AnnotationToolbar
+                  annotations={annotations}
+                  lang={lang}
+                  t={t}
+                  disabled={!annotations.settings.enabled}
+                />
+              </div>
+            )}
             <ProfilingPanel rec={rec} lang={lang} t={t} />
             <ClipsGallery rec={rec} lang={lang} t={t} />
             <SnapshotsGallery rec={rec} lang={lang} t={t} />

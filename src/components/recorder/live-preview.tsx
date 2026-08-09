@@ -13,6 +13,7 @@ import {
   PictureInPicture2,
   Camera,
   Clapperboard,
+  PenLine,
   GripVertical,
   Activity,
   HardDrive,
@@ -26,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { formatBytes, formatDuration } from "@/lib/recorder-utils";
 import { WaveformViz } from "@/components/recorder/waveform-viz";
 import type { UseRecorder } from "@/hooks/use-recorder";
+import type { UseAnnotations } from "@/hooks/use-annotations";
 import type { Lang } from "@/lib/i18n";
 
 type Props = {
@@ -33,17 +35,21 @@ type Props = {
   lang: Lang;
   t: (key: string) => string;
   canvasRef: RefObject<HTMLCanvasElement | null>;
+  annotations?: UseAnnotations;
 };
 
-export function LivePreview({ rec, lang, t, canvasRef }: Props) {
+export function LivePreview({ rec, lang, t, canvasRef, annotations }: Props) {
   const directVideoRef = useRef<HTMLVideoElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [textInput, setTextInput] = useState<{ x: number; y: number; value: string } | null>(null);
   // Local CSS position for the draggable idle overlay (px relative to wrapper)
   const [overlayStyle, setOverlayStyle] = useState<{ left: number; top: number } | null>(null);
   // Track wrapper dimensions for overlay sizing (avoid reading refs during render)
   const [wrapperSize, setWrapperSize] = useState({ width: 1280, height: 720 });
+  // Track canvas dimensions for annotation coordinate mapping
+  const [canvasSize, setCanvasSize] = useState({ width: 1280, height: 720 });
 
   // Observe wrapper size so the overlay scales responsively
   useEffect(() => {
@@ -58,6 +64,21 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // Track canvas dimensions for annotation coordinate mapping
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const update = () => {
+      if (el.width > 0 && el.height > 0) {
+        setCanvasSize({ width: el.width, height: el.height });
+      }
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [canvasRef]);
 
   // Attach screen stream to direct-mode video element
   useEffect(() => {
@@ -195,6 +216,18 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
         </div>
         <div className="flex items-center gap-1.5">
           {statusBadge()}
+          {(rec.isRecording || rec.isPaused) && annotations && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("size-8", annotations.settings.enabled && "bg-primary/10 text-primary")}
+              onClick={() => annotations.updateSettings("enabled", !annotations.settings.enabled)}
+              aria-label={annotations.settings.enabled ? t("annotationDisabled") : t("annotationEnabled")}
+              title={annotations.settings.enabled ? t("annotationDisabled") : t("annotationEnabled")}
+            >
+              <PenLine className="size-4" />
+            </Button>
+          )}
           {(rec.isRecording || rec.isPaused) && (
             <Button
               variant="ghost"
@@ -264,9 +297,54 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
         ref={wrapperRef}
         role="region"
         aria-label={t("ariaPreview")}
+        onPointerDown={(e) => {
+          if (!annotations?.settings.enabled || !rec.isRecording) return;
+          if (annotations.settings.tool === "text") return; // text handled via click
+          const rect = wrapperRef.current?.getBoundingClientRect();
+          if (!rect) return;
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          const scaleX = canvas.width / rect.width;
+          const scaleY = canvas.height / rect.height;
+          annotations.beginStroke((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+        }}
+        onPointerMove={(e) => {
+          if (!annotations?.settings.enabled || !rec.isRecording) return;
+          if (annotations.settings.tool === "text") return;
+          if (!annotations.activeStroke) return;
+          const rect = wrapperRef.current?.getBoundingClientRect();
+          if (!rect) return;
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          const scaleX = canvas.width / rect.width;
+          const scaleY = canvas.height / rect.height;
+          annotations.moveStroke((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+        }}
+        onPointerUp={() => {
+          if (!annotations?.settings.enabled || !rec.isRecording) return;
+          annotations.endStroke();
+        }}
+        onPointerLeave={() => {
+          if (!annotations?.settings.enabled || !rec.isRecording) return;
+          annotations.endStroke();
+        }}
+        onClick={(e) => {
+          if (!annotations?.settings.enabled || !rec.isRecording) return;
+          if (annotations.settings.tool !== "text") return;
+          const rect = wrapperRef.current?.getBoundingClientRect();
+          if (!rect) return;
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          const scaleX = canvas.width / rect.width;
+          const scaleY = canvas.height / rect.height;
+          const x = (e.clientX - rect.left) * scaleX;
+          const y = (e.clientY - rect.top) * scaleY;
+          setTextInput({ x, y, value: "" });
+        }}
         className={cn(
           "preview-inset relative aspect-video w-full overflow-hidden rounded-2xl border bg-[#0b0f10] transition-shadow",
           rec.isRecording ? "border-red-500/50 rec-glow" : "border-border/60",
+          annotations?.settings.enabled && rec.isRecording && "cursor-crosshair",
         )}
       >
         {/* Empty state — recessed viewport with wireframe monitor */}
@@ -410,6 +488,39 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* Text annotation input overlay */}
+        {textInput && annotations?.settings.enabled && (
+          <div
+            className="absolute z-30"
+            style={{
+              left: `${(textInput.x / canvasSize.width) * 100}%`,
+              top: `${(textInput.y / canvasSize.height) * 100}%`,
+            }}
+          >
+            <input
+              autoFocus
+              value={textInput.value}
+              onChange={(e) => setTextInput({ ...textInput, value: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  annotations.commitText(textInput.value);
+                  setTextInput(null);
+                } else if (e.key === "Escape") {
+                  annotations.cancelText();
+                  setTextInput(null);
+                }
+              }}
+              onBlur={() => {
+                annotations.commitText(textInput.value);
+                setTextInput(null);
+              }}
+              placeholder={t("typeHere")}
+              className="w-40 rounded border border-primary bg-black/80 px-1.5 py-0.5 text-xs text-white outline-none backdrop-blur-sm"
+              style={{ color: annotations.settings.color }}
+            />
           </div>
         )}
       </div>
