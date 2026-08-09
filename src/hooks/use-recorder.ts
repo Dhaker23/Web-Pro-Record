@@ -132,6 +132,10 @@ export type RecorderSettings = {
   watermarkText: string; // empty = use app name
   watermarkOpacity: number; // 0..1
   watermarkSize: number; // 0.01..0.06 (fraction of height)
+  // Round 11: watermark logo
+  watermarkLogoDataUrl: string; // data URL of uploaded logo, empty = none
+  watermarkMode: "text" | "logo" | "both";
+  watermarkLogoSize: number; // 0.02..0.15 (fraction of height)
 };
 
 export type RecorderError = { kind: string; message: string } | null;
@@ -157,6 +161,9 @@ const DEFAULT_SETTINGS: RecorderSettings = {
   watermarkText: "",
   watermarkOpacity: 0.7,
   watermarkSize: 0.022,
+  watermarkLogoDataUrl: "",
+  watermarkMode: "text",
+  watermarkLogoSize: 0.06,
 };
 
 // --- Safe persistence (localStorage may be blocked; never throw) ---
@@ -181,6 +188,8 @@ type PersistablePrefs = Pick<
   | "watermarkText"
   | "watermarkOpacity"
   | "watermarkSize"
+  | "watermarkMode"
+  | "watermarkLogoSize"
 >;
 
 function loadPrefs(): Partial<PersistablePrefs> | null {
@@ -224,6 +233,8 @@ const PERSISTABLE_KEYS: (keyof PersistablePrefs)[] = [
   "watermarkText",
   "watermarkOpacity",
   "watermarkSize",
+  "watermarkMode",
+  "watermarkLogoSize",
 ];
 
 export function useRecorder(
@@ -330,6 +341,9 @@ export function useRecorder(
   const renderTimeAccumRef = useRef<number>(0);
   const renderTimeSamplesRef = useRef<number>(0);
   const profilingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Round 11: watermark logo image element (loaded from data URL)
+  const watermarkLogoImgRef = useRef<HTMLImageElement | null>(null);
+  const watermarkLogoReadyRef = useRef<boolean>(false);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -337,6 +351,25 @@ export function useRecorder(
   useEffect(() => {
     langRef.current = lang;
   }, [lang]);
+
+  // Round 11: load watermark logo image when data URL changes.
+  useEffect(() => {
+    const dataUrl = settingsRef.current.watermarkLogoDataUrl;
+    if (!dataUrl) {
+      watermarkLogoImgRef.current = null;
+      watermarkLogoReadyRef.current = false;
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      watermarkLogoReadyRef.current = true;
+    };
+    img.onerror = () => {
+      watermarkLogoReadyRef.current = false;
+    };
+    img.src = dataUrl;
+    watermarkLogoImgRef.current = img;
+  }, [settings.watermarkLogoDataUrl]);
 
   // ---- Feature detection on mount ----
   useEffect(() => {
@@ -648,23 +681,45 @@ export function useRecorder(
 
   const drawWatermark = (ctx: CanvasRenderingContext2D, w: number, h: number, rtl: boolean) => {
     const s = settingsRef.current;
-    // Round 10: use custom watermark text if set, otherwise the app name.
-    const text = s.watermarkText?.trim() || "Web Pro Record";
     const opacity = Math.max(0.1, Math.min(1, s.watermarkOpacity));
-    const sizeFraction = Math.max(0.01, Math.min(0.06, s.watermarkSize));
-    ctx.save();
-    const fontSize = Math.max(12, Math.round(h * sizeFraction));
-    ctx.font = `600 ${fontSize}px var(--font-geist-sans), sans-serif`;
-    ctx.fillStyle = `rgba(255,255,255,${opacity})`;
-    ctx.strokeStyle = `rgba(0,0,0,${opacity * 0.5})`;
-    ctx.lineWidth = Math.max(1, fontSize / 6);
-    ctx.textBaseline = "bottom";
     const margin = Math.round(h * 0.02);
-    const x = rtl ? margin : w - margin;
-    ctx.textAlign = rtl ? "left" : "right";
-    ctx.strokeText(text, x, h - margin);
-    ctx.fillText(text, x, h - margin);
-    ctx.restore();
+    const mode = s.watermarkMode;
+    const showText = mode === "text" || mode === "both";
+    const showLogo = (mode === "logo" || mode === "both") && watermarkLogoReadyRef.current && watermarkLogoImgRef.current;
+
+    // Draw text watermark
+    if (showText) {
+      const text = s.watermarkText?.trim() || "Web Pro Record";
+      const sizeFraction = Math.max(0.01, Math.min(0.06, s.watermarkSize));
+      ctx.save();
+      const fontSize = Math.max(12, Math.round(h * sizeFraction));
+      ctx.font = `600 ${fontSize}px var(--font-geist-sans), sans-serif`;
+      ctx.fillStyle = `rgba(255,255,255,${opacity})`;
+      ctx.strokeStyle = `rgba(0,0,0,${opacity * 0.5})`;
+      ctx.lineWidth = Math.max(1, fontSize / 6);
+      ctx.textBaseline = "bottom";
+      // If showing logo too, place text above the logo; otherwise at bottom.
+      const textY = showLogo ? h - margin - Math.round(h * s.watermarkLogoSize) - 4 : h - margin;
+      const x = rtl ? margin : w - margin;
+      ctx.textAlign = rtl ? "left" : "right";
+      ctx.strokeText(text, x, textY);
+      ctx.fillText(text, x, textY);
+      ctx.restore();
+    }
+
+    // Draw logo watermark
+    if (showLogo) {
+      const img = watermarkLogoImgRef.current!;
+      const logoH = Math.round(h * Math.max(0.02, Math.min(0.15, s.watermarkLogoSize)));
+      const aspect = img.width && img.height ? img.width / img.height : 1;
+      const logoW = Math.round(logoH * aspect);
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      const logoX = rtl ? margin : w - margin - logoW;
+      const logoY = h - margin - logoH;
+      ctx.drawImage(img, logoX, logoY, logoW, logoH);
+      ctx.restore();
+    }
   };
 
   /** Render one frame of the composite (screen + webcam overlay). */

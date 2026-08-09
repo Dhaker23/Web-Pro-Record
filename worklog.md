@@ -371,6 +371,38 @@ Priority for next phase: manual real-browser recording validation, then add drag
 ### Remaining recommendations for next phase
 1. **Persist history to IndexedDB** — currently in-memory only; could persist across sessions with IndexedDB.
 2. **Recording format conversion** — client-side WebM→MP4 conversion (if feasible without backend).
-3. **Watermark logo upload** — extend watermark to support an uploaded image/logo (currently text-only).
+3. ~~Watermark logo upload~~ ✅ DONE (round 11 — image upload + 3 modes)
 4. **Manual real-browser recording validation** — test the full workflow in Chrome (cannot be done in headless).
-5. **Custom annotation colors palette** — let users pick custom colors beyond the 7 presets.
+5. ~~Custom annotation colors palette~~ ✅ DONE (round 11 — native color input)
+
+---
+
+## Round 11 — Custom Color Picker + Watermark Logo Upload (cron webDevReview)
+
+### Task ID: 11
+### Agent: main (cron webDevReview)
+### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+
+### Work Log
+- Read worklog; confirmed rounds 1–10 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+- VLM critical assessment identified: live preview empty state, toggle styling as weak areas; recommended custom color picker and logo upload as new features.
+- **New features added (Round 11):**
+  - **Custom annotation color picker** — The annotation toolbar's color popover now includes a native HTML5 `<input type="color">` below the 7 preset colors, separated by a divider. Users can pick any custom color (full hex range) which updates `settings.color` live. The color swatch preview reflects the current color. The native color input is overlaid on a circular swatch with opacity-0 to make it clickable while showing the color.
+  - **Watermark logo upload** — Added `watermarkLogoDataUrl`, `watermarkMode` ("text" | "logo" | "both"), and `watermarkLogoSize` to RecorderSettings. The `drawWatermark` function now supports 3 modes: text-only (existing), logo-only (draws the uploaded image), and text+logo (draws both, with text positioned above the logo). A `watermarkLogoImgRef` + `watermarkLogoReadyRef` load the image via `new Image()` when the data URL changes. The ControlPanel watermark section now has a mode selector (Text only / Logo only / Text + logo) and, when logo mode is active, an upload button (FileReader → data URL), a remove button, a logo preview thumbnail, and a logo size slider (2–15% of canvas height). Logo data URL is intentionally NOT persisted (could be large); mode + size are persisted.
+- **i18n:** added ~16 new keys (EN + AR) for custom color picker and watermark logo (mode, upload, remove, size, opacity, descriptions, error).
+- **Architecture:** new RecorderSettings fields (`watermarkLogoDataUrl`, `watermarkMode`, `watermarkLogoSize`); `drawWatermark` refactored to support 3 modes; logo image loaded via effect + refs; annotation color picker uses native `<input type="color">`.
+- **Styling:** watermark mode selector with 3 options; logo upload card with upload button + remove + preview + size slider; annotation color popover with custom color section (divider + native color input + label). All reduced-motion safe.
+- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+
+### Stage Summary
+- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 11 features present: Watermark mode selector ✓ (Text only / Logo only / Text + logo), logo upload UI ✓ (Upload logo, Watermark logo, upload description visible after selecting Logo only mode). Mode change verified live: selected "Logo only", upload UI appeared. Keyboard shortcuts (Ctrl+L) still work (toggled EN→AR→RTL live).
+- **VLM verdict (round 11):** Watermark section with mode dropdown (set to "Logo only") ✓; Upload logo button clearly visible ✓; overall layout very polished and premium ✓; dark theme, consistent spacing, modern UI components, clear typography; no visible bugs or layout issues.
+- **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-recorder.ts`, `src/components/recorder/control-panel.tsx`, `src/components/recorder/annotation-toolbar.tsx`.
+
+### Remaining recommendations for next phase
+1. **Persist history to IndexedDB** — currently in-memory only; could persist across sessions with IndexedDB.
+2. **Recording format conversion** — client-side WebM→MP4 conversion (if feasible without backend).
+3. **Manual real-browser recording validation** — test the full workflow in Chrome (cannot be done in headless).
+4. **Custom UI accent color** — let users change the app's accent color (currently emerald).
+5. **Recording templates manager** — save/load custom recording configurations as named profiles.

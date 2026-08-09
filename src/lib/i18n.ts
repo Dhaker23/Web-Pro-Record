@@ -429,6 +429,23 @@ const en: Dict = {
   annotationImportFailed: "Failed to import annotations",
   annotationExportEmpty: "No annotations to export",
   annotationClearAll: "Clear all annotations",
+
+  // Round 11 — custom color picker + watermark logo upload
+  customColor: "Custom color",
+  customColorDesc: "Pick any color for your annotations.",
+  pickColor: "Pick a color",
+  presetColors: "Preset colors",
+  watermarkLogo: "Watermark logo",
+  watermarkLogoDesc: "Upload an image to use as a watermark (PNG/JPG/SVG).",
+  watermarkLogoUpload: "Upload logo",
+  watermarkLogoRemove: "Remove logo",
+  watermarkLogoError: "Failed to load image. Please use PNG, JPG, or SVG.",
+  watermarkMode: "Watermark mode",
+  watermarkModeText: "Text only",
+  watermarkModeLogo: "Logo only",
+  watermarkModeBoth: "Text + logo",
+  watermarkLogoSize: "Logo size",
+  watermarkLogoOpacity: "Logo opacity",
 };
 
 const ar: Dict = {
@@ -845,6 +862,23 @@ const ar: Dict = {
   annotationImportFailed: "تعذّر استيراد التعليقات التوضيحية",
   annotationExportEmpty: "لا توجد تعليقات توضيحية للتصدير",
   annotationClearAll: "مسح جميع التعليقات التوضيحية",
+
+  // Round 11 — custom color picker + watermark logo upload
+  customColor: "لون مخصّص",
+  customColorDesc: "اختر أي لون لتعليقاتك التوضيحية.",
+  pickColor: "اختر لونًا",
+  presetColors: "ألوان جاهزة",
+  watermarkLogo: "شعار العلامة المائية",
+  watermarkLogoDesc: "ارفع صورة لاستخدامها كعلامة مائية (PNG/JPG/SVG).",
+  watermarkLogoUpload: "رفع شعار",
+  watermarkLogoRemove: "إزالة الشعار",
+  watermarkLogoError: "تعذّر تحميل الصورة. يُرجى استخدام PNG أو JPG أو SVG.",
+  watermarkMode: "وضع العلامة المائية",
+  watermarkModeText: "نص فقط",
+  watermarkModeLogo: "شعار فقط",
+  watermarkModeBoth: "نص + شعار",
+  watermarkLogoSize: "حجم الشعار",
+  watermarkLogoOpacity: "شفافية الشعار",
 };
 
 export const dictionaries: Record<Lang, Dict> = { en, ar };

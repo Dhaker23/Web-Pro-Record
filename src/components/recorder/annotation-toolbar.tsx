@@ -73,23 +73,38 @@ export function AnnotationToolbar({ annotations, lang, t, disabled }: Props) {
           <div className="size-4 rounded-full border border-border/60" style={{ backgroundColor: settings.color }} />
         </Button>
         {showColors && (
-          <div className="absolute top-9 z-30 flex gap-1 rounded-lg border border-border/60 bg-popover p-1.5 shadow-md">
-            {ANNOTATION_COLORS.map((color) => (
-              <button
-                key={color}
-                type="button"
-                onClick={() => {
-                  annotations.updateSettings("color", color);
-                  setShowColors(false);
-                }}
-                className={cn(
-                  "size-5 rounded-full border transition-transform hover:scale-110",
-                  settings.color === color ? "border-primary ring-2 ring-primary/30" : "border-border/60",
-                )}
-                style={{ backgroundColor: color }}
-                aria-label={color}
-              />
-            ))}
+          <div className="absolute top-9 z-30 flex flex-col gap-2 rounded-lg border border-border/60 bg-popover p-2 shadow-md">
+            <div className="flex gap-1">
+              {ANNOTATION_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => {
+                    annotations.updateSettings("color", color);
+                    setShowColors(false);
+                  }}
+                  className={cn(
+                    "size-5 rounded-full border transition-transform hover:scale-110",
+                    settings.color === color ? "border-primary ring-2 ring-primary/30" : "border-border/60",
+                  )}
+                  style={{ backgroundColor: color }}
+                  aria-label={color}
+                />
+              ))}
+            </div>
+            {/* Round 11: custom color picker */}
+            <div className="flex items-center gap-1.5 border-t border-border/50 pt-1.5">
+              <label className="relative grid size-5 cursor-pointer place-items-center overflow-hidden rounded-full border border-border/60" title={t("customColor")}>
+                <input
+                  type="color"
+                  value={settings.color}
+                  onChange={(e) => annotations.updateSettings("color", e.target.value)}
+                  className="absolute inset-0 size-full cursor-pointer opacity-0"
+                />
+                <div className="size-full rounded-full" style={{ backgroundColor: settings.color }} />
+              </label>
+              <span className="text-[9px] text-muted-foreground">{t("customColor")}</span>
+            </div>
           </div>
         )}
       </div>

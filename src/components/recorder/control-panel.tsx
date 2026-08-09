@@ -17,6 +17,8 @@ import {
   Sparkles,
   Info,
   Droplet,
+  Upload,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -606,6 +608,92 @@ export function ControlPanel({ rec, lang, t }: Props) {
                   disabled={disabled}
                 />
               </div>
+
+              {/* Round 11: Watermark mode selector */}
+              <div className="space-y-1.5">
+                <Label className="text-[10px] text-muted-foreground">{t("watermarkMode")}</Label>
+                <Select
+                  value={settings.watermarkMode}
+                  onValueChange={(v) => rec.updateSettings("watermarkMode", v as "text" | "logo" | "both")}
+                  disabled={disabled}
+                >
+                  <SelectTrigger className="h-8 w-full text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="text">{t("watermarkModeText")}</SelectItem>
+                    <SelectItem value="logo">{t("watermarkModeLogo")}</SelectItem>
+                    <SelectItem value="both">{t("watermarkModeBoth")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Round 11: Logo upload (shown when mode includes logo) */}
+              {(settings.watermarkMode === "logo" || settings.watermarkMode === "both") && (
+                <div className="space-y-2 rounded-lg border border-border/50 bg-card/40 p-2.5">
+                  <Label className="text-[10px] text-muted-foreground">{t("watermarkLogo")}</Label>
+                  <p className="text-[9px] text-muted-foreground/70">{t("watermarkLogoDesc")}</p>
+                  <div className="flex items-center gap-2">
+                    <label className="flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs font-medium transition-colors hover:bg-accent">
+                      <Upload className="size-3" />
+                      {t("watermarkLogoUpload")}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/svg+xml"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            const dataUrl = reader.result as string;
+                            rec.updateSettings("watermarkLogoDataUrl", dataUrl);
+                          };
+                          reader.onerror = () => {};
+                          reader.readAsDataURL(file);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                    {settings.watermarkLogoDataUrl && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 gap-1 px-2 text-xs text-muted-foreground hover:text-destructive"
+                        onClick={() => rec.updateSettings("watermarkLogoDataUrl", "")}
+                        disabled={disabled}
+                      >
+                        <Trash2 className="size-3" />
+                        {t("watermarkLogoRemove")}
+                      </Button>
+                    )}
+                  </div>
+                  {/* Logo preview + size slider */}
+                  {settings.watermarkLogoDataUrl && (
+                    <div className="flex items-center gap-2">
+                      <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded border border-border/50 bg-black/40">
+                        <img src={settings.watermarkLogoDataUrl} alt="logo" className="max-h-full max-w-full object-contain" />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-muted-foreground">{t("watermarkLogoSize")}</span>
+                          <span className="text-[9px] font-medium text-muted-foreground">
+                            {Math.round(settings.watermarkLogoSize * 100)}%
+                          </span>
+                        </div>
+                        <Slider
+                          value={[settings.watermarkLogoSize]}
+                          min={0.02}
+                          max={0.15}
+                          step={0.005}
+                          onValueChange={(v) => rec.updateSettings("watermarkLogoSize", v[0])}
+                          disabled={disabled}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
