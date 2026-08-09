@@ -4,14 +4,19 @@ import { Monitor, Moon, Sun, Languages, ShieldCheck } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { ShortcutsDialog } from "@/components/recorder/shortcuts-dialog";
+import { ShortcutEditor } from "@/components/recorder/shortcut-editor";
+import type { ShortcutMap } from "@/lib/shortcuts";
 
 type Props = {
   lang: "en" | "ar";
   onToggleLang: () => void;
   t: (key: string) => string;
+  shortcuts: ShortcutMap;
+  onShortcutsChange: (map: ShortcutMap) => void;
+  onShortcutsReset: () => void;
 };
 
-export function Header({ lang, onToggleLang, t }: Props) {
+export function Header({ lang, onToggleLang, t, shortcuts, onShortcutsChange, onShortcutsReset }: Props) {
   const { setTheme, resolvedTheme } = useTheme();
 
   const toggleTheme = () => {
@@ -46,6 +51,15 @@ export function Header({ lang, onToggleLang, t }: Props) {
           </div>
 
           <div className="hidden sm:block">
+            <ShortcutEditor
+              lang={lang}
+              t={t}
+              shortcuts={shortcuts}
+              onChange={onShortcutsChange}
+              onReset={onShortcutsReset}
+            />
+          </div>
+          <div className="hidden md:block">
             <ShortcutsDialog lang={lang} t={t} />
           </div>
 

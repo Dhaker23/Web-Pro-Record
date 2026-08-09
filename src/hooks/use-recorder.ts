@@ -1619,6 +1619,59 @@ export function useRecorder(
     }
   }, [result]);
 
+  /** Round 6: Export recording stats as a JSON string. */
+  const exportStatsJson = useCallback((): string => {
+    const payload = {
+      app: "Web Pro Record",
+      createdAt: result ? new Date(result.createdAt).toISOString() : null,
+      stats: recordingStats,
+      recording: result
+        ? {
+            duration: result.duration,
+            mimeType: result.mimeType,
+            format: mimeToLabel(result.mimeType),
+            size: result.size,
+            width: result.width,
+            height: result.height,
+          }
+        : null,
+      settings: {
+        quality: settingsRef.current.quality,
+        frameRate: settingsRef.current.frameRate,
+        videoBitrate: settingsRef.current.videoBitrate,
+        audioBitrate: settingsRef.current.audioBitrate,
+        adaptiveFps: settingsRef.current.adaptiveFps,
+      },
+      language: langRef.current,
+    };
+    return JSON.stringify(payload, null, 2);
+  }, [result, recordingStats]);
+
+  /** Download the stats JSON as a file. */
+  const downloadStatsJson = useCallback(() => {
+    const json = exportStatsJson();
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const ts = result ? new Date(result.createdAt).toISOString().slice(0, 19).replace(/[:T]/g, "-") : Date.now().toString();
+    a.download = `wpr-stats-${ts}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [exportStatsJson, result]);
+
+  /** Copy the stats JSON to the clipboard. */
+  const copyStatsJson = useCallback(async (): Promise<boolean> => {
+    try {
+      await navigator.clipboard.writeText(exportStatsJson());
+      return true;
+    } catch {
+      return false;
+    }
+  }, [exportStatsJson]);
+
   // ---------------- Derived ----------------
 
   const previewMode: PreviewMode = (() => {
@@ -1694,6 +1747,10 @@ export function useRecorder(
     clearClips,
     downloadClip,
     applyPreset,
+    // Round 6 actions
+    exportStatsJson,
+    downloadStatsJson,
+    copyStatsJson,
     isRecording,
     isPaused,
     canStart,

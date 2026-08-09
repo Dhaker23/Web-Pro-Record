@@ -5,6 +5,12 @@ import { useTheme } from "next-themes";
 import { AlertTriangle, X, Radio } from "lucide-react";
 import { useRecorder } from "@/hooks/use-recorder";
 import { translate, isRtl, type Lang } from "@/lib/i18n";
+import {
+  type ShortcutMap,
+  DEFAULT_SHORTCUTS,
+  loadShortcuts,
+  eventToBinding,
+} from "@/lib/shortcuts";
 import { Header } from "@/components/recorder/header";
 import { Hero } from "@/components/recorder/hero";
 import { ControlPanel } from "@/components/recorder/control-panel";
@@ -42,15 +48,17 @@ function saveLang(l: Lang): void {
 
 export default function Home() {
   const [lang, setLang] = useState<Lang>("en");
+  const [shortcuts, setShortcuts] = useState<ShortcutMap>(DEFAULT_SHORTCUTS);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rec = useRecorder(lang, canvasRef);
   const { toast } = useToast();
   const { setTheme, resolvedTheme } = useTheme();
 
-  // Load persisted language on mount (client-only to avoid hydration mismatch).
+  // Load persisted language + shortcuts on mount (client-only to avoid hydration mismatch).
   useEffect(() => {
     const persisted = loadLang();
     if (persisted !== "en") setLang(persisted);
+    setShortcuts(loadShortcuts());
   }, []);
 
   const t = useCallback((key: string) => translate(lang, key), [lang]);
@@ -99,7 +107,7 @@ export default function Home() {
     }
   }, [rec.warning, t, toast]);
 
-  // Keyboard shortcuts (global). Ignores typing in inputs/selects/textareas.
+  // Keyboard shortcuts (global, configurable). Ignores typing in inputs/selects/textareas.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -111,71 +119,49 @@ export default function Home() {
         target?.isContentEditable;
       if (isEditable) return;
 
-      const mod = e.metaKey || e.ctrlKey;
+      // Escape always stops recording (not customizable).
+      if (e.key === "Escape") {
+        if (rec.isRecording || rec.isPaused) {
+          rec.stopRecording();
+        }
+        return;
+      }
 
-      // Ctrl/Cmd + L → toggle language
-      if (mod && e.key.toLowerCase() === "l") {
+      const binding = eventToBinding(e);
+      const matches = (action: keyof ShortcutMap) => {
+        const b = shortcuts[action];
+        return b.combo === binding.combo && b.mod === binding.mod;
+      };
+
+      if (matches("startStop")) {
+        e.preventDefault();
+        if (rec.isRecording) rec.pauseRecording();
+        else if (rec.isPaused) rec.resumeRecording();
+        else if (rec.canStart) void rec.startRecording();
+      } else if (matches("pauseResume")) {
+        e.preventDefault();
+        if (rec.isRecording) rec.pauseRecording();
+        else if (rec.isPaused) rec.resumeRecording();
+      } else if (matches("reset")) {
+        e.preventDefault();
+        if (!rec.isRecording && !rec.isPaused) rec.resetAll();
+      } else if (matches("toggleLang")) {
         e.preventDefault();
         toggleLang();
-        return;
-      }
-      // Ctrl/Cmd + D → toggle theme
-      if (mod && e.key.toLowerCase() === "d") {
+      } else if (matches("toggleTheme")) {
         e.preventDefault();
         toggleTheme();
-        return;
-      }
-      if (mod) return; // other combos handled by browser
-
-      switch (e.key) {
-        case " ":
-        case "Spacebar": {
-          e.preventDefault();
-          if (rec.isRecording) {
-            rec.pauseRecording();
-          } else if (rec.isPaused) {
-            rec.resumeRecording();
-          } else if (rec.canStart) {
-            void rec.startRecording();
-          }
-          break;
-        }
-        case "Escape": {
-          if (rec.isRecording || rec.isPaused) {
-            rec.stopRecording();
-          }
-          break;
-        }
-        case "p":
-        case "P": {
-          if (rec.isRecording) rec.pauseRecording();
-          else if (rec.isPaused) rec.resumeRecording();
-          break;
-        }
-        case "r":
-        case "R": {
-          if (!rec.isRecording && !rec.isPaused) rec.resetAll();
-          break;
-        }
-        case "w":
-        case "W": {
-          rec.toggleWebcam(!rec.settings.webcamEnabled);
-          break;
-        }
-        case "m":
-        case "M": {
-          rec.updateSettings("micEnabled", !rec.settings.micEnabled);
-          break;
-        }
+      } else if (matches("toggleWebcam")) {
+        e.preventDefault();
+        rec.toggleWebcam(!rec.settings.webcamEnabled);
+      } else if (matches("toggleMic")) {
+        e.preventDefault();
+        rec.updateSettings("micEnabled", !rec.settings.micEnabled);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [
-    rec,
-    toggleLang,
-    toggleTheme,
-  ]);
+  }, [shortcuts, rec, toggleLang, toggleTheme]);
 
   // Browser recommendation banner
   const [showBanner, setShowBanner] = useState(false);
@@ -193,7 +179,14 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <Header lang={lang} onToggleLang={toggleLang} t={t} />
+      <Header
+        lang={lang}
+        onToggleLang={toggleLang}
+        t={t}
+        shortcuts={shortcuts}
+        onShortcutsChange={setShortcuts}
+        onShortcutsReset={() => setShortcuts(DEFAULT_SHORTCUTS)}
+      />
 
       <Hero t={t} />
 

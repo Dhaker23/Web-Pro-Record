@@ -207,8 +207,41 @@ Priority for next phase: manual real-browser recording validation, then add drag
 - **Files changed:** `src/lib/i18n.ts`, `src/lib/presets.ts` (new), `src/hooks/use-recorder.ts`, `src/components/recorder/presets-bar.tsx` (new), `src/components/recorder/stats-summary.tsx` (new), `src/components/recorder/clips-gallery.tsx` (new), `src/components/recorder/live-preview.tsx`, `src/app/page.tsx`.
 
 ### Remaining recommendations for next phase
-1. **Custom keyboard shortcut editor** — let users rebind shortcuts.
-2. **Recording templates for webcam overlays** — pre-designed overlay styles/borders.
-3. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets in Chrome (cannot be done in headless).
-4. **Performance profiling** — add a debug panel showing render time per frame, memory usage, track state.
-5. **Export/share stats** — allow exporting the recording stats summary as JSON or sharing it.
+1. ~~Custom keyboard shortcut editor~~ ✅ DONE (round 6)
+2. ~~Recording templates for webcam overlays~~ ✅ DONE (round 6 — overlay templates)
+3. ~~Export/share stats~~ ✅ DONE (round 6 — JSON export + copy)
+4. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets + shortcut editor + templates in Chrome (cannot be done in headless).
+5. **Performance profiling** — add a debug panel showing render time per frame, memory usage, track state.
+
+---
+
+## Round 6 — Shortcut Editor, Overlay Templates, Export Stats (cron webDevReview)
+
+### Task ID: 6
+### Agent: main (cron webDevReview)
+### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+
+### Work Log
+- Read worklog; confirmed rounds 1–5 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+- VLM critical assessment identified: live preview empty state, device selection UI, footer notes density as weak areas; recommended shortcut editor, overlay templates, export stats as new features.
+- **New features added (Round 6):**
+  - **Custom keyboard shortcut editor** — `shortcuts.ts` defines `ShortcutMap` (7 actions: startStop, pauseResume, reset, toggleLang, toggleTheme, toggleWebcam, toggleMic) with default bindings, `loadShortcuts()`/`saveShortcuts()` persistence, `eventToBinding()` to convert KeyboardEvents, and `bindingLabel()` for human-readable labels (Mac-aware ⌘ vs Ctrl). `ShortcutEditor` dialog component lets users click any shortcut to enter bind mode, press a new key to rebind (with conflict detection — duplicate keys rejected with a warning), Escape to cancel, and a "Reset to defaults" button. The page's keyboard handler was rewritten to use the configurable `shortcuts` state via `eventToBinding` matching instead of hardcoded switch cases. Shortcuts persist to localStorage (`wpr-shortcuts-v1`) and load on mount. Verified live: rebound P→T, persisted across reload, reset to defaults works.
+  - **Webcam overlay templates** — `overlay-templates.ts` defines 4 templates (Classic: rounded+border+shadow; Neon: rounded+border+shadow+tight margin; Minimal: rounded+shadow+no border; Polaroid: rounded+border+shadow+wide margin). `OverlayTemplates` component renders a 4-card grid inside the webcam overlay section with icons (Square, Sparkles, Circle, Image), labels, descriptions, and active-state detection (`detectTemplate`). Clicking a template applies its settings via `applyPreset`. Disabled when webcam off or during recording.
+  - **Export/share recording stats** — `exportStatsJson()` builds a JSON payload (app name, createdAt, recording stats, recording details, settings, language). `downloadStatsJson()` downloads it as a `.json` file. `copyStatsJson()` copies it to the clipboard. The `StatsSummary` card now has two buttons in its header: "Copy JSON" (with copied confirmation) and "Download JSON".
+- **i18n:** added ~30 new keys (EN + AR) for shortcut editor, overlay templates, export stats.
+- **Hook architecture:** new actions (`exportStatsJson`, `downloadStatsJson`, `copyStatsJson`). Header now accepts `shortcuts` + `onShortcutsChange` + `onShortcutsReset` props. Page manages `shortcuts` state (loaded from localStorage on mount) and passes to both Header and the keyboard handler.
+- **Styling:** shortcut editor with bind-mode highlighting + conflict warning + reset button; overlay templates with 4 icon cards (active state with emerald ring); export stats buttons with copied confirmation. All reduced-motion safe.
+- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+
+### Stage Summary
+- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 6 features present: Edit shortcuts button ✓, Overlay templates (Classic, Neon, Minimal, Polaroid) ✓, export stats buttons (in StatsSummary, only visible after recording) ✓. Shortcut editor verified live: opened dialog, rebound P→T, persisted across reload, reset to defaults works. Configurable keyboard handler verified (Ctrl+L via eventToBinding matching toggled EN→AR→RTL). Arabic RTL works.
+- **VLM verdict (round 6):** Edit shortcuts button in header confirmed ✓; overall layout polished and premium ✓; clean dark theme, consistent typography, well-organized sections with clear icons, professional aesthetic, no visual bugs.
+- **Files changed:** `src/lib/i18n.ts`, `src/lib/shortcuts.ts` (new), `src/lib/overlay-templates.ts` (new), `src/hooks/use-recorder.ts`, `src/components/recorder/header.tsx`, `src/components/recorder/shortcut-editor.tsx` (new), `src/components/recorder/overlay-templates.tsx` (new), `src/components/recorder/control-panel.tsx`, `src/components/recorder/stats-summary.tsx`, `src/app/page.tsx`.
+
+### Remaining recommendations for next phase
+1. **Performance profiling panel** — add a debug panel showing render time per frame, memory usage, track state, audio context state.
+2. **Annotation tools** — draw on the canvas during recording (text, arrows, highlights).
+3. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets + shortcut editor + templates + export stats in Chrome (cannot be done in headless).
+4. **Recording scheduler** — schedule a recording to start at a specific time.
+5. **Multi-recording history** — keep a local history of past recordings (in-memory or IndexedDB) with thumbnails.

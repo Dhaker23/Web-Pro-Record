@@ -1,6 +1,8 @@
 "use client";
 
-import { Gauge, Film, AudioWaveform, Clock, HardDrive, Maximize2, FileVideo } from "lucide-react";
+import { useState } from "react";
+import { Gauge, Film, AudioWaveform, Clock, HardDrive, Maximize2, FileVideo, Download, Copy, Check } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { formatBytes, formatDuration } from "@/lib/recorder-utils";
 import type { UseRecorder } from "@/hooks/use-recorder";
 import type { Lang } from "@/lib/i18n";
@@ -13,6 +15,7 @@ type Props = {
 
 export function StatsSummary({ rec, lang, t }: Props) {
   const s = rec.recordingStats;
+  const [copied, setCopied] = useState(false);
   if (!s) return null;
 
   const stats = [
@@ -39,13 +42,41 @@ export function StatsSummary({ rec, lang, t }: Props) {
 
   return (
     <div className="fade-up rounded-2xl border border-border/60 bg-card/40 p-4 backdrop-blur-sm">
-      <div className="mb-3 flex items-center gap-2">
-        <div className="grid size-7 place-items-center rounded-lg bg-primary/10 text-primary">
-          <Gauge className="size-4" />
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <div className="grid size-7 place-items-center rounded-lg bg-primary/10 text-primary">
+            <Gauge className="size-4" />
+          </div>
+          <div>
+            <div className="text-sm font-semibold leading-tight">{t("statsSummary")}</div>
+            <div className="text-[11px] text-muted-foreground">{t("statsSummaryDesc")}</div>
+          </div>
         </div>
-        <div>
-          <div className="text-sm font-semibold leading-tight">{t("statsSummary")}</div>
-          <div className="text-[11px] text-muted-foreground">{t("statsSummaryDesc")}</div>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={async () => {
+              const ok = await rec.copyStatsJson();
+              if (ok) {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }
+            }}
+          >
+            {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+            <span className="hidden text-xs sm:inline">{copied ? t("statsCopied") : t("copyStatsJson")}</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={rec.downloadStatsJson}
+          >
+            <Download className="size-3.5" />
+            <span className="hidden text-xs sm:inline">{t("exportStatsJson")}</span>
+          </Button>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">

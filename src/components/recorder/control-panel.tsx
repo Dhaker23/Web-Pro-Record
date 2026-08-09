@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { mimeToLabel } from "@/lib/recorder-utils";
+import { OverlayTemplates } from "@/components/recorder/overlay-templates";
 import type { UseRecorder } from "@/hooks/use-recorder";
 import type { Lang, OutputQuality as Q } from "@/lib/i18n";
 import type { WebcamPosition, WebcamShape, FrameRate } from "@/lib/i18n";
@@ -367,6 +368,7 @@ export function ControlPanel({ rec, lang, t }: Props) {
       {/* Webcam overlay */}
       <SectionCard title={t("overlayTitle")} icon={Webcam} t={t}>
         <div className={cn("flex flex-col gap-4", !settings.webcamEnabled && "pointer-events-none opacity-50")}>
+          <OverlayTemplates rec={rec} lang={lang} t={t} />
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">{t("webcamShape")}</Label>
