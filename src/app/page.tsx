@@ -8,9 +8,12 @@ import { translate, isRtl, type Lang } from "@/lib/i18n";
 import { Header } from "@/components/recorder/header";
 import { Hero } from "@/components/recorder/hero";
 import { ControlPanel } from "@/components/recorder/control-panel";
+import { PresetsBar } from "@/components/recorder/presets-bar";
 import { LivePreview } from "@/components/recorder/live-preview";
 import { FinalRecording } from "@/components/recorder/final-recording";
 import { SnapshotsGallery } from "@/components/recorder/snapshots-gallery";
+import { ClipsGallery } from "@/components/recorder/clips-gallery";
+import { StatsSummary } from "@/components/recorder/stats-summary";
 import { HelpSection } from "@/components/recorder/help-section";
 import { Footer } from "@/components/recorder/footer";
 import { Button } from "@/components/ui/button";
@@ -232,17 +235,24 @@ export default function Home() {
 
       {/* Main studio */}
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6">
+        {/* Presets bar — full width above the two-column layout */}
+        <div className="mb-6">
+          <PresetsBar rec={rec} lang={lang} t={t} />
+        </div>
+
         <div className="grid gap-6 lg:grid-cols-[minmax(340px,400px)_1fr]">
           {/* Left: control panel */}
           <div className="lg:sticky lg:top-20 lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1 scroll-thin">
             <ControlPanel rec={rec} lang={lang} t={t} />
           </div>
 
-          {/* Right: preview + final */}
+          {/* Right: preview + galleries + final + stats */}
           <div className="flex flex-col gap-6">
             <LivePreview rec={rec} lang={lang} t={t} canvasRef={canvasRef} />
+            <ClipsGallery rec={rec} lang={lang} t={t} />
             <SnapshotsGallery rec={rec} lang={lang} t={t} />
             <FinalRecording rec={rec} lang={lang} t={t} />
+            <StatsSummary rec={rec} lang={lang} t={t} />
           </div>
         </div>
       </main>

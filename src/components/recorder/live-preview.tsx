@@ -12,6 +12,7 @@ import {
   Loader2,
   PictureInPicture2,
   Camera,
+  Clapperboard,
   GripVertical,
   Activity,
   HardDrive,
@@ -204,6 +205,23 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
               title={t("captureSnapshot")}
             >
               <Camera className="size-4" />
+            </Button>
+          )}
+          {(rec.isRecording || rec.isPaused) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("size-8", rec.clipRecording && "bg-amber-500/15 text-amber-500")}
+              onClick={rec.captureClip}
+              disabled={rec.clipRecording}
+              aria-label={t("captureClip")}
+              title={t("captureClip")}
+            >
+              {rec.clipRecording ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Clapperboard className="size-4" />
+              )}
             </Button>
           )}
           {(rec.isRecording || rec.isPaused) && pipSupported && (

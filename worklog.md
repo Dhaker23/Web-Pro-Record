@@ -174,8 +174,41 @@ Priority for next phase: manual real-browser recording validation, then add drag
 - **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-recorder.ts`, `src/components/recorder/live-preview.tsx`, `src/components/recorder/control-panel.tsx`, `src/components/recorder/final-recording.tsx`, `src/components/recorder/waveform-viz.tsx` (new), `src/components/recorder/recording-timeline.tsx` (new), `src/app/page.tsx`, `src/app/globals.css`.
 
 ### Remaining recommendations for next phase
-1. **Snapshot video clip** — allow capturing a short video clip (e.g., 5s) instead of just a still frame.
-2. **Recording stats summary** — post-recording summary card (avg FPS, total frames, peak audio level, duration breakdown).
+1. ~~Snapshot video clip~~ ✅ DONE (round 5 — clip capture)
+2. ~~Recording stats summary~~ ✅ DONE (round 5 — stats summary card)
 3. **Custom keyboard shortcut editor** — let users rebind shortcuts.
-4. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS in Chrome (cannot be done in headless).
+4. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets in Chrome (cannot be done in headless).
 5. **Performance profiling** — add a debug panel showing render time per frame, memory usage, track state.
+
+---
+
+## Round 5 — Presets, Stats Summary, Clip Capture (cron webDevReview)
+
+### Task ID: 5
+### Agent: main (cron webDevReview)
+### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+
+### Work Log
+- Read worklog; confirmed rounds 1–4 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+- VLM critical assessment identified: live preview empty state, device selection UI, footer notes density as weak areas; recommended presets, templates, stats summary, clip capture as new features.
+- **New features added (Round 5):**
+  - **Recording presets** — `presets.ts` defines 4 presets (Gaming: 60fps/native/high-bitrate/system-audio; Presentation: 30fps/1080p/mic; Tutorial: 30fps/1080p/webcam+mic; Minimal: 24fps/720p/screen-only). `PresetsBar` component renders a 4-card grid above the main studio with icons, labels, descriptions, and active-state detection (`detectPreset` compares current settings to each preset). Clicking a preset applies its settings via `applyPreset`. Disabled during recording. The active preset is shown as a badge.
+  - **Post-recording stats summary** — `RecordingStats` type tracks avg FPS, total frames, peak audio level, duration, file size, resolution, and codec. Accumulated during recording (total frames + FPS sum + samples in the FPS measurement loop; peak audio in the waveform loop). Computed in the onstop handler and displayed in a `StatsSummary` card with 7 stat tiles (color-coded emerald/blue/amber icons, monospace values). Fades in with the `fade-up` animation.
+  - **Clip capture** — `captureClip()` clones the combined stream, creates a separate MediaRecorder, records for 5 seconds, then auto-stops and produces a downloadable video clip. `ClipsGallery` component shows a horizontal scrollable strip of clip thumbnails (video players) with elapsed-time badges, size badges, hover-to-reveal download + remove buttons, a capture button (with spinner while recording), and clear-all. A clip capture button (Clapperboard icon) is also in the LivePreview header during recording. Clips are downloadable as WebM.
+- **i18n:** added ~30 new keys (EN + AR) for presets, stats summary, clip capture.
+- **Hook architecture:** new `RecordingStats`, `Clip` types; new state (`recordingStats`, `clips`, `clipRecording`); new refs (`peakAudioRef`, `totalFramesRef`, `fpsSumRef`, `fpsSamplesRef`, `clipRecorderRef`, `clipChunksRef`, `clipStreamRef`); new actions (`captureClip`, `removeClip`, `clearClips`, `downloadClip`, `applyPreset`). Stats accumulators reset at recording start; stats computed in onstop; clips + stats cleared on full reset.
+- **Styling:** presets bar with 4 icon cards (active state with emerald ring), stats summary with 7 color-coded tiles + fade-up animation, clips gallery with video thumbnails + hover overlays, clip capture button with spinner state. All reduced-motion safe.
+- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+
+### Stage Summary
+- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 5 features present: Presets ✓ (Gaming, Presentation, Tutorial, Minimal, Custom), active preset detection ✓. Keyboard shortcuts still work. Arabic RTL verified by VLM (presets labels in Arabic: الألعاب، عرض تقديمي، شرح، بسيط; layout correctly mirrored; no breaks).
+- **VLM verdict (round 5):** Presets bar with 4 cards + active indication confirmed ✓; overall layout polished and premium ✓; cohesive dark theme with clear visual hierarchy and professional typography.
+- **Files changed:** `src/lib/i18n.ts`, `src/lib/presets.ts` (new), `src/hooks/use-recorder.ts`, `src/components/recorder/presets-bar.tsx` (new), `src/components/recorder/stats-summary.tsx` (new), `src/components/recorder/clips-gallery.tsx` (new), `src/components/recorder/live-preview.tsx`, `src/app/page.tsx`.
+
+### Remaining recommendations for next phase
+1. **Custom keyboard shortcut editor** — let users rebind shortcuts.
+2. **Recording templates for webcam overlays** — pre-designed overlay styles/borders.
+3. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets in Chrome (cannot be done in headless).
+4. **Performance profiling** — add a debug panel showing render time per frame, memory usage, track state.
+5. **Export/share stats** — allow exporting the recording stats summary as JSON or sharing it.

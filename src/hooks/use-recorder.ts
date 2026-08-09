@@ -49,6 +49,29 @@ export type WaveformData = {
   level: number;
 };
 
+/** Post-recording performance summary. */
+export type RecordingStats = {
+  avgFps: number;
+  totalFrames: number;
+  peakAudio: number;
+  duration: number;
+  fileSize: number;
+  width: number;
+  height: number;
+  codec: string;
+} | null;
+
+/** A short video clip captured during recording. */
+export type Clip = {
+  id: string;
+  url: string;
+  blob: Blob;
+  duration: number;
+  size: number;
+  createdAt: number;
+  elapsed: number;
+};
+
 export type RecordingResult = {
   url: string;
   blob: Blob;
@@ -204,6 +227,10 @@ export function useRecorder(
   const [actualFps, setActualFps] = useState(0);
   const [fpsDowngraded, setFpsDowngraded] = useState(false);
   const [effectiveFps, setEffectiveFps] = useState<FrameRate | null>(null);
+  // Round 5 state
+  const [recordingStats, setRecordingStats] = useState<RecordingStats>(null);
+  const [clips, setClips] = useState<Clip[]>([]);
+  const [clipRecording, setClipRecording] = useState(false);
 
   // Exposed streams for preview elements
   const [webcamStream, setWebcamStream] = useState<MediaStream | null>(null);
@@ -246,6 +273,14 @@ export function useRecorder(
   const effectiveFpsRef = useRef<FrameRate | null>(null);
   const downgradeCheckRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const waveformRafRef = useRef<number | null>(null);
+  // Round 5 refs — stats tracking + clip recorder
+  const peakAudioRef = useRef<number>(0);
+  const totalFramesRef = useRef<number>(0);
+  const fpsSumRef = useRef<number>(0);
+  const fpsSamplesRef = useRef<number>(0);
+  const clipRecorderRef = useRef<MediaRecorder | null>(null);
+  const clipChunksRef = useRef<Blob[]>([]);
+  const clipStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -448,6 +483,13 @@ export function useRecorder(
     setFreePos(null);
     setSnapshots([]);
     setLiveStats({ elapsed: 0, estimatedBytes: 0, fps: 0, audioActive: false });
+    // Round 5: reset clips + recording stats
+    setClips((prev) => {
+      prev.forEach((c) => URL.revokeObjectURL(c.url));
+      return [];
+    });
+    setRecordingStats(null);
+    setClipRecording(false);
   }, [cleanupMedia]);
 
   /** Stop the MediaRecorder; the onstop handler finalizes the blob + cleans tracks. */
@@ -714,6 +756,10 @@ export function useRecorder(
         const fps = Math.round((renderFrameCountRef.current * 1000) / elapsed);
         setActualFps(fps);
         lastFpsRef.current = fps;
+        // Round 5: accumulate stats for the post-recording summary.
+        totalFramesRef.current += renderFrameCountRef.current;
+        fpsSumRef.current += fps;
+        fpsSamplesRef.current += 1;
         renderFrameCountRef.current = 0;
         lastFpsMeasureRef.current = now;
       }
@@ -868,6 +914,8 @@ export function useRecorder(
         if (dev > maxLevel) maxLevel = dev;
       }
       setWaveform({ samples: out, level: maxLevel });
+      // Round 5: track peak audio level for the post-recording summary.
+      if (maxLevel > peakAudioRef.current) peakAudioRef.current = maxLevel;
       waveformRafRef.current = requestAnimationFrame(loop);
     };
     loop();
@@ -1025,6 +1073,91 @@ export function useRecorder(
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  }, []);
+
+  // ---------------- Round 5: clip capture + preset application ----------------
+
+  /** Capture a short (5s) video clip from the live composite stream. */
+  const captureClip = useCallback(() => {
+    if (clipRecording) return;
+    const source = combinedStreamRef.current;
+    if (!source) return;
+    setClipRecording(true);
+    clipChunksRef.current = [];
+    // Clone the stream so stopping the clip doesn't affect the main recording.
+    const clone = source.clone();
+    clipStreamRef.current = clone;
+    const mime = pickMimeType();
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(clone, mime ? { mimeType: mime } : {});
+    } catch {
+      recorder = new MediaRecorder(clone);
+    }
+    clipRecorderRef.current = recorder;
+    recorder.ondataavailable = (ev) => {
+      if (ev.data && ev.data.size > 0) clipChunksRef.current.push(ev.data);
+    };
+    recorder.onstop = () => {
+      const blob = new Blob(clipChunksRef.current, { type: mime || "video/webm" });
+      const url = URL.createObjectURL(blob);
+      const clip: Clip = {
+        id: `clip-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        url,
+        blob,
+        duration: 5,
+        size: blob.size,
+        createdAt: Date.now(),
+        elapsed: (performance.now() - startTimeRef.current - pausedAccumRef.current) / 1000,
+      };
+      setClips((prev) => [clip, ...prev].slice(0, 12));
+      stopStream(clone);
+      clipStreamRef.current = null;
+      clipRecorderRef.current = null;
+      clipChunksRef.current = [];
+      setClipRecording(false);
+    };
+    recorder.start();
+    // Auto-stop after 5 seconds.
+    setTimeout(() => {
+      if (recorder.state !== "inactive") {
+        try {
+          recorder.stop();
+        } catch {
+          /* ignore */
+        }
+      }
+    }, 5000);
+  }, [clipRecording]);
+
+  const removeClip = useCallback((id: string) => {
+    setClips((prev) => {
+      const clip = prev.find((c) => c.id === id);
+      if (clip) URL.revokeObjectURL(clip.url);
+      return prev.filter((c) => c.id !== id);
+    });
+  }, []);
+
+  const clearClips = useCallback(() => {
+    setClips((prev) => {
+      prev.forEach((c) => URL.revokeObjectURL(c.url));
+      return [];
+    });
+  }, []);
+
+  const downloadClip = useCallback((clip: Clip) => {
+    const a = document.createElement("a");
+    a.href = clip.url;
+    const ext = mimeToExtension(pickMimeType());
+    a.download = `wpr-clip-${Math.round(clip.elapsed)}s.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }, []);
+
+  /** Apply a recording preset (partial settings merge). */
+  const applyPreset = useCallback((partial: Partial<RecorderSettings>) => {
+    setSettings((prev) => ({ ...prev, ...partial }));
   }, []);
 
   /** Ensure a hidden <video> exists for PiP (must be in DOM & playing for PiP). */
@@ -1291,6 +1424,20 @@ export function useRecorder(
           height,
           createdAt: Date.now(),
         });
+        // Round 5: compute post-recording stats summary.
+        const avgFps = fpsSamplesRef.current > 0
+          ? Math.round(fpsSumRef.current / fpsSamplesRef.current)
+          : Number(settingsRef.current.frameRate);
+        setRecordingStats({
+          avgFps,
+          totalFrames: totalFramesRef.current,
+          peakAudio: peakAudioRef.current,
+          duration: Math.max(0, duration),
+          fileSize: blob.size,
+          width,
+          height,
+          codec: mimeToLabel(finalMime),
+        });
         setStatus("stopped");
         setElapsed(Math.max(0, duration));
         // Cleanup media tracks but keep result
@@ -1351,6 +1498,11 @@ export function useRecorder(
       recorder.start(1000); // collect data every second
       setStatus("recording");
       startTimer();
+      // Round 5: reset stats accumulators at recording start.
+      peakAudioRef.current = 0;
+      totalFramesRef.current = 0;
+      fpsSumRef.current = 0;
+      fpsSamplesRef.current = 0;
       ensurePipVideo();
       startStatsLoop();
       // Round 4: FPS measurement + adaptive downgrade + waveform
@@ -1525,6 +1677,10 @@ export function useRecorder(
     actualFps,
     fpsDowngraded,
     effectiveFps,
+    // Round 5 state
+    recordingStats,
+    clips,
+    clipRecording,
     // Round 3 actions
     setWebcamFreePos,
     captureSnapshot,
@@ -1532,6 +1688,12 @@ export function useRecorder(
     clearSnapshots,
     downloadSnapshot,
     togglePiP,
+    // Round 5 actions
+    captureClip,
+    removeClip,
+    clearClips,
+    downloadClip,
+    applyPreset,
     isRecording,
     isPaused,
     canStart,
