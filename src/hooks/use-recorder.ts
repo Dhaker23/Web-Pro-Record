@@ -23,6 +23,26 @@ export type RecStatus = "idle" | "countdown" | "recording" | "paused" | "stopped
 
 export type PreviewMode = "empty" | "webcam-idle" | "composite" | "direct";
 
+/** Normalized free webcam overlay position (0..1 relative to canvas). null = use preset. */
+export type FreePos = { x: number; y: number } | null;
+
+export type Snapshot = {
+  id: string;
+  url: string;
+  dataUrl: string;
+  width: number;
+  height: number;
+  createdAt: number;
+  elapsed: number;
+};
+
+export type LiveStats = {
+  elapsed: number;
+  estimatedBytes: number;
+  fps: number;
+  audioActive: boolean;
+};
+
 export type RecordingResult = {
   url: string;
   blob: Blob;
@@ -159,6 +179,16 @@ export function useRecorder(
   const [micLevel, setMicLevel] = useState(0);
   const [countdownValue, setCountdownValue] = useState<number | null>(null);
   const [screenLabel, setScreenLabel] = useState<string>("");
+  // Round 3 state
+  const [freePos, setFreePos] = useState<FreePos>(null);
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [liveStats, setLiveStats] = useState<LiveStats>({
+    elapsed: 0,
+    estimatedBytes: 0,
+    fps: 0,
+    audioActive: false,
+  });
+  const [pipActive, setPipActive] = useState(false);
 
   // Exposed streams for preview elements
   const [webcamStream, setWebcamStream] = useState<MediaStream | null>(null);
@@ -187,6 +217,13 @@ export function useRecorder(
   const resultUrlRef = useRef<string | null>(null);
   const hiddenContainerRef = useRef<HTMLDivElement | null>(null);
   const langRef = useRef(lang);
+  // Round 3 refs
+  const freePosRef = useRef<FreePos>(null);
+  const statsTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const frameCountRef = useRef<number>(0);
+  const lastFpsTimeRef = useRef<number>(0);
+  const lastFpsRef = useRef<number>(0);
+  const pipVideoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -292,6 +329,24 @@ export function useRecorder(
     stopRaf();
     stopMicLevelLoop();
     clearTimer();
+    // Stop live-stats interval
+    if (statsTimerRef.current) {
+      clearInterval(statsTimerRef.current);
+      statsTimerRef.current = null;
+    }
+    // Exit PiP if active
+    if (typeof document !== "undefined" && document.pictureInPictureElement) {
+      try {
+        void document.exitPictureInPicture();
+      } catch {
+        /* ignore */
+      }
+    }
+    setPipActive(false);
+    // Detach PiP video
+    if (pipVideoRef.current) {
+      pipVideoRef.current.srcObject = null;
+    }
 
     // Stop recorders
     const rec = mediaRecorderRef.current;
@@ -348,6 +403,11 @@ export function useRecorder(
     setCountdownValue(null);
     setError(null);
     setWarning(null);
+    // Round 3: reset free position + snapshots + live stats
+    freePosRef.current = null;
+    setFreePos(null);
+    setSnapshots([]);
+    setLiveStats({ elapsed: 0, estimatedBytes: 0, fps: 0, audioActive: false });
   }, [cleanupMedia]);
 
   /** Stop the MediaRecorder; the onstop handler finalizes the blob + cleans tracks. */
@@ -505,17 +565,26 @@ export function useRecorder(
       const targetH = Math.round((targetW * wh) / wv);
       const margin = s.webcamMargin;
       let x: number, y: number;
+      const fp = freePosRef.current;
       const pos = s.webcamPosition;
-      // Mirror horizontally for RTL? Keep position logical: in RTL we mirror left/right.
-      const mirror = rtl;
-      const tl = mirror ? "top-right" : "top-left";
-      const tr = mirror ? "top-left" : "top-right";
-      const bl = mirror ? "bottom-right" : "bottom-left";
-      const br = mirror ? "bottom-left" : "bottom-right";
-      if (pos === tl || pos === tr) y = margin;
-      else y = H - targetH - margin;
-      if (pos === tl || pos === bl) x = margin;
-      else x = W - targetW - margin;
+      if (fp) {
+        // Free position: normalized 0..1 of available area (canvas minus overlay size).
+        const maxX = Math.max(0, W - targetW);
+        const maxY = Math.max(0, H - targetH);
+        x = Math.round(fp.x * maxX);
+        y = Math.round(fp.y * maxY);
+      } else {
+        // Mirror horizontally for RTL? Keep position logical: in RTL we mirror left/right.
+        const mirror = rtl;
+        const tl = mirror ? "top-right" : "top-left";
+        const tr = mirror ? "top-left" : "top-right";
+        const bl = mirror ? "bottom-right" : "bottom-left";
+        const br = mirror ? "bottom-left" : "bottom-right";
+        if (pos === tl || pos === tr) y = margin;
+        else y = H - targetH - margin;
+        if (pos === tl || pos === bl) x = margin;
+        else x = W - targetW - margin;
+      }
 
       ctx.save();
       // Clip shape
@@ -630,13 +699,13 @@ export function useRecorder(
         ctx.font = `400 ${Math.round(H * 0.026)}px var(--font-geist-sans), sans-serif`;
         ctx.fillStyle = "rgba(255,255,255,0.35)";
         ctx.fillText(langRef.current === "ar" ? "اضغط ابدأ التسجيل لالتقاط الشاشة" : "Press Start to capture your screen", W / 2, H / 2 + 24);
-        // Draw webcam overlay using the same compositor (it reads settingsRef)
-        renderCompositeFrame();
+        // Note: the webcam overlay is rendered as a separate draggable CSS element in idle mode,
+        // so we do NOT call renderCompositeFrame() here (it would double-draw the webcam).
       }
       rafRef.current = requestAnimationFrame(loop);
     };
     loop();
-  }, [canvasRef, ensureHiddenVideos, stopRaf, renderCompositeFrame]);
+  }, [canvasRef, ensureHiddenVideos, stopRaf]);
 
   // Start/stop idle preview based on settings + status
   useEffect(() => {
@@ -776,6 +845,129 @@ export function useRecorder(
       }),
     [],
   );
+
+  // ---------------- Round 3: free position, snapshots, PiP, live stats ----------------
+  // (declared before startRecording so they can be referenced in its deps)
+
+  /** Set a normalized free position (0..1). null resets to the preset position. */
+  const setWebcamFreePos = useCallback((pos: FreePos) => {
+    freePosRef.current = pos;
+    setFreePos(pos);
+  }, []);
+
+  /** Capture a still frame from the current canvas (snapshot during recording). */
+  const captureSnapshot = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || canvas.width === 0) return;
+    try {
+      const dataUrl = canvas.toDataURL("image/png");
+      const id = `snap-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const snap: Snapshot = {
+        id,
+        url: dataUrl,
+        dataUrl,
+        width: canvas.width,
+        height: canvas.height,
+        createdAt: Date.now(),
+        elapsed:
+          (performance.now() - startTimeRef.current - pausedAccumRef.current) / 1000,
+      };
+      setSnapshots((prev) => [snap, ...prev].slice(0, 24));
+    } catch {
+      /* canvas.toDataURL may throw if tainted; ignore */
+    }
+  }, [canvasRef]);
+
+  const removeSnapshot = useCallback((id: string) => {
+    setSnapshots((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+  const clearSnapshots = useCallback(() => {
+    setSnapshots([]);
+  }, []);
+
+  /** Download a snapshot as PNG. */
+  const downloadSnapshot = useCallback((snap: Snapshot) => {
+    const a = document.createElement("a");
+    a.href = snap.url;
+    a.download = `wpr-snapshot-${Math.round(snap.elapsed)}s.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }, []);
+
+  /** Ensure a hidden <video> exists for PiP (must be in DOM & playing for PiP). */
+  const ensurePipVideo = useCallback(() => {
+    if (typeof document === "undefined") return;
+    if (!pipVideoRef.current) {
+      const v = document.createElement("video");
+      v.muted = true;
+      (v as HTMLVideoElement & { playsInline?: boolean }).playsInline = true;
+      v.style.position = "fixed";
+      v.style.width = "2px";
+      v.style.height = "2px";
+      v.style.opacity = "0";
+      v.style.pointerEvents = "none";
+      v.style.top = "-9999px";
+      v.style.left = "-9999px";
+      document.body.appendChild(v);
+      v.addEventListener("enterpictureinpicture", () => setPipActive(true));
+      v.addEventListener("leavepictureinpicture", () => setPipActive(false));
+      pipVideoRef.current = v;
+    }
+  }, []);
+
+  /** Toggle Picture-in-Picture on a dedicated hidden video bound to the combined stream. */
+  const togglePiP = useCallback(async () => {
+    const video = pipVideoRef.current;
+    if (!video) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        setPipActive(false);
+      } else {
+        const stream = combinedStreamRef.current;
+        if (stream && video.srcObject !== stream) {
+          video.srcObject = stream;
+        }
+        await video.play().catch(() => {});
+        await video.requestPictureInPicture?.();
+        setPipActive(true);
+      }
+    } catch {
+      /* PiP not supported or denied — ignore */
+    }
+  }, []);
+
+  /** Start the live-stats interval (updates elapsed/est-size/fps every 500ms). */
+  const startStatsLoop = useCallback(() => {
+    if (statsTimerRef.current) return;
+    const fps = Number(settingsRef.current.frameRate);
+    const vbr = settingsRef.current.videoBitrate || qualityToVideoBitrate(settingsRef.current.quality, fps);
+    const abr = settingsRef.current.audioBitrate || 128_000;
+    const bytesPerSec = (vbr + abr) / 8;
+    lastFpsTimeRef.current = performance.now();
+    frameCountRef.current = 0;
+    statsTimerRef.current = setInterval(() => {
+      if (statusRef.current !== "recording") return;
+      const now = performance.now();
+      const e = (now - startTimeRef.current - pausedAccumRef.current) / 1000;
+      setLiveStats({
+        elapsed: e,
+        estimatedBytes: Math.round(e * bytesPerSec),
+        fps: lastFpsRef.current || fps,
+        audioActive: !!analyserRef.current,
+      });
+    }, 500);
+  }, []);
+
+  /** Stop the live-stats interval. */
+  const stopStatsLoop = useCallback(() => {
+    if (statsTimerRef.current) {
+      clearInterval(statsTimerRef.current);
+      statsTimerRef.current = null;
+    }
+  }, []);
 
   // ---------------- Start / pause / resume / stop ----------------
 
@@ -992,6 +1184,10 @@ export function useRecorder(
         stopRaf();
         stopMicLevelLoop();
         clearTimer();
+        if (statsTimerRef.current) {
+          clearInterval(statsTimerRef.current);
+          statsTimerRef.current = null;
+        }
         if (sVideo) sVideo.srcObject = null;
         // Restart idle webcam preview if still enabled
         if (settingsRef.current.webcamEnabled && webcamStreamRef.current) {
@@ -1007,12 +1203,14 @@ export function useRecorder(
       recorder.start(1000); // collect data every second
       setStatus("recording");
       startTimer();
+      ensurePipVideo();
+      startStatsLoop();
       if (analyserRef.current) startMicLevelLoop();
     } catch (e) {
       setError({ kind: "generic", message: "errGeneric" });
       cleanupMedia();
     }
-  }, [canvasRef, features, ensureHiddenVideos, runCountdown, buildMixedAudio, startRenderLoop, startTimer, startMicLevelLoop, startIdlePreviewLoop, selectedMicId, cleanupMedia]);
+  }, [canvasRef, features, ensureHiddenVideos, runCountdown, buildMixedAudio, startRenderLoop, startTimer, startMicLevelLoop, startIdlePreviewLoop, selectedMicId, cleanupMedia, ensurePipVideo, startStatsLoop]);
 
   const pauseRecording = useCallback(() => {
     const rec = mediaRecorderRef.current;
@@ -1025,8 +1223,9 @@ export function useRecorder(
       setStatus("paused");
       pauseTimer();
       stopMicLevelLoop();
+      stopStatsLoop();
     }
-  }, [pauseTimer, stopMicLevelLoop]);
+  }, [pauseTimer, stopMicLevelLoop, stopStatsLoop]);
 
   const resumeRecording = useCallback(() => {
     const rec = mediaRecorderRef.current;
@@ -1038,9 +1237,10 @@ export function useRecorder(
       }
       setStatus("recording");
       resumeTimer();
+      startStatsLoop();
       if (analyserRef.current) startMicLevelLoop();
     }
-  }, [resumeTimer, startMicLevelLoop]);
+  }, [resumeTimer, startMicLevelLoop, startStatsLoop]);
 
   // ---------------- Reset / actions ----------------
 
@@ -1150,6 +1350,18 @@ export function useRecorder(
     screenStream,
     previewMode,
     negotiatedMime,
+    // Round 3 state
+    freePos,
+    snapshots,
+    liveStats,
+    pipActive,
+    // Round 3 actions
+    setWebcamFreePos,
+    captureSnapshot,
+    removeSnapshot,
+    clearSnapshots,
+    downloadSnapshot,
+    togglePiP,
     isRecording,
     isPaused,
     canStart,

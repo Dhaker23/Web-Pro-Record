@@ -221,6 +221,28 @@ const en: Dict = {
 
   // Persistence
   preferencesSaved: "Preferences saved",
+
+  // Round 3 — draggable overlay, snapshots, PiP, live stats
+  webcamFreePos: "Custom position",
+  webcamFreePosHint: "Drag the webcam overlay to reposition it.",
+  resetPosition: "Reset position",
+  customPosition: "Custom",
+  snapshot: "Snapshot",
+  snapshotTitle: "Snapshots",
+  snapshotDesc: "Still frames captured during recording.",
+  snapshotEmpty: "No snapshots yet. Capture frames while recording.",
+  captureSnapshot: "Capture snapshot",
+  downloadSnapshot: "Download snapshot",
+  clearSnapshots: "Clear snapshots",
+  pictureInPicture: "Picture-in-picture",
+  exitPictureInPicture: "Exit picture-in-picture",
+  liveStats: "Live stats",
+  statElapsed: "Elapsed",
+  statSize: "Est. size",
+  statFps: "FPS",
+  statAudio: "Audio",
+  pipUnsupported: "Picture-in-picture is not supported in this browser.",
+  snapshotsCount: "snapshots",
 };
 
 const ar: Dict = {
@@ -429,6 +451,28 @@ const ar: Dict = {
 
   // Persistence
   preferencesSaved: "تم حفظ التفضيلات",
+
+  // Round 3 — draggable overlay, snapshots, PiP, live stats
+  webcamFreePos: "موضع مخصّص",
+  webcamFreePosHint: "اسحب طبقة الكاميرا لإعادة تحديد موضعها.",
+  resetPosition: "إعادة ضبط الموضع",
+  customPosition: "مخصّص",
+  snapshot: "لقطة",
+  snapshotTitle: "اللقطات",
+  snapshotDesc: "إطارات ثابتة التُقطت أثناء التسجيل.",
+  snapshotEmpty: "لا توجد لقطات بعد. التقط إطارات أثناء التسجيل.",
+  captureSnapshot: "التقاط لقطة",
+  downloadSnapshot: "تنزيل اللقطة",
+  clearSnapshots: "مسح اللقطات",
+  pictureInPicture: "صورة داخل صورة",
+  exitPictureInPicture: "إنهاء صورة داخل صورة",
+  liveStats: "إحصائيات مباشرة",
+  statElapsed: "المنقضي",
+  statSize: "الحجم التقريبي",
+  statFps: "إطار/ث",
+  statAudio: "الصوت",
+  pipUnsupported: "صورة داخل صورة غير مدعومة في هذا المتصفح.",
+  snapshotsCount: "لقطات",
 };
 
 export const dictionaries: Record<Lang, Dict> = { en, ar };

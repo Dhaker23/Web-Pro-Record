@@ -391,18 +391,21 @@ export function ControlPanel({ rec, lang, t }: Props) {
             </div>
           </div>
 
-          {/* Position grid picker */}
+          {/* Position grid picker — clicking a preset clears any custom drag position */}
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {positions.map((p) => (
               <button
                 key={p}
                 type="button"
-                onClick={() => rec.updateSettings("webcamPosition", p)}
+                onClick={() => {
+                  rec.updateSettings("webcamPosition", p);
+                  rec.setWebcamFreePos(null);
+                }}
                 disabled={disabled || !settings.webcamEnabled}
-                aria-pressed={settings.webcamPosition === p}
+                aria-pressed={settings.webcamPosition === p && !rec.freePos}
                 className={cn(
                   "relative aspect-[4/3] rounded-lg border bg-card transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  settings.webcamPosition === p
+                  settings.webcamPosition === p && !rec.freePos
                     ? "border-primary ring-1 ring-primary/40"
                     : "border-border/50 hover:border-primary/40",
                 )}
@@ -417,6 +420,31 @@ export function ControlPanel({ rec, lang, t }: Props) {
               </button>
             ))}
           </div>
+
+          {/* Custom position indicator + reset */}
+          {rec.freePos ? (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <div className="size-1.5 rounded-full bg-primary" />
+                <span className="text-xs font-medium text-primary">{t("customPosition")}</span>
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  ({Math.round(rec.freePos.x * 100)}%, {Math.round(rec.freePos.y * 100)}%)
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={() => rec.setWebcamFreePos(null)}
+                disabled={disabled}
+              >
+                <RotateCcw className="size-3" />
+                {t("resetPosition")}
+              </Button>
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">{t("webcamFreePosHint")}</p>
+          )}
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">

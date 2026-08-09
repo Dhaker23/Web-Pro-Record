@@ -10,6 +10,7 @@ import { Hero } from "@/components/recorder/hero";
 import { ControlPanel } from "@/components/recorder/control-panel";
 import { LivePreview } from "@/components/recorder/live-preview";
 import { FinalRecording } from "@/components/recorder/final-recording";
+import { SnapshotsGallery } from "@/components/recorder/snapshots-gallery";
 import { HelpSection } from "@/components/recorder/help-section";
 import { Footer } from "@/components/recorder/footer";
 import { Button } from "@/components/ui/button";
@@ -209,6 +210,7 @@ export default function Home() {
           {/* Right: preview + final */}
           <div className="flex flex-col gap-6">
             <LivePreview rec={rec} lang={lang} t={t} canvasRef={canvasRef} />
+            <SnapshotsGallery rec={rec} lang={lang} t={t} />
             <FinalRecording rec={rec} lang={lang} t={t} />
           </div>
         </div>

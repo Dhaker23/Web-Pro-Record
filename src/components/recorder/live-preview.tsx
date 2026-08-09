@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import {
   Monitor,
   Webcam,
@@ -10,10 +10,17 @@ import {
   Radio,
   Pause,
   Loader2,
+  PictureInPicture2,
+  Camera,
+  GripVertical,
+  Activity,
+  HardDrive,
+  Timer,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { formatBytes, formatDuration } from "@/lib/recorder-utils";
 import type { UseRecorder } from "@/hooks/use-recorder";
 import type { Lang } from "@/lib/i18n";
 
@@ -27,6 +34,26 @@ type Props = {
 export function LivePreview({ rec, lang, t, canvasRef }: Props) {
   const directVideoRef = useRef<HTMLVideoElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+  // Local CSS position for the draggable idle overlay (px relative to wrapper)
+  const [overlayStyle, setOverlayStyle] = useState<{ left: number; top: number } | null>(null);
+  // Track wrapper dimensions for overlay sizing (avoid reading refs during render)
+  const [wrapperSize, setWrapperSize] = useState({ width: 1280, height: 720 });
+
+  // Observe wrapper size so the overlay scales responsively
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      setWrapperSize({ width: r.width, height: r.height });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Attach screen stream to direct-mode video element
   useEffect(() => {
@@ -45,6 +72,73 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
   const showCanvas = rec.previewMode === "composite" || rec.previewMode === "webcam-idle";
   const showDirect = rec.previewMode === "direct";
   const isEmpty = rec.previewMode === "empty";
+  const showIdleOverlay = rec.previewMode === "webcam-idle" && rec.webcamStream;
+
+  // Position the idle draggable overlay based on the preset when no free pos is set.
+  useEffect(() => {
+    if (!showIdleOverlay) {
+      setOverlayStyle(null);
+      return;
+    }
+    if (rec.freePos) return; // free pos drives it via drag handlers
+    const { width: ww, height: wh } = wrapperSize;
+    const sizePct = rec.settings.webcamSize;
+    const w = Math.round((Math.min(ww, wh) * sizePct) / 100);
+    const margin = rec.settings.webcamMargin;
+    const pos = rec.settings.webcamPosition;
+    const rtl = lang === "ar";
+    const leftMap: Record<string, string> = {
+      "top-left": rtl ? "right" : "left",
+      "top-right": rtl ? "left" : "right",
+      "bottom-left": rtl ? "right" : "left",
+      "bottom-right": rtl ? "left" : "right",
+    };
+    const side = leftMap[pos] || "right";
+    const isTop = pos.startsWith("top");
+    const left = side === "left" ? margin : ww - w - margin;
+    const top = isTop ? margin : wh - (w * 0.75) - margin;
+    setOverlayStyle({ left, top });
+  }, [showIdleOverlay, rec.freePos, rec.settings.webcamPosition, rec.settings.webcamSize, rec.settings.webcamMargin, lang, wrapperSize]);
+
+  // Pointer drag handlers for the idle webcam overlay
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!showIdleOverlay) return;
+      const overlay = overlayRef.current;
+      const wrapper = wrapperRef.current;
+      if (!overlay || !wrapper) return;
+      e.preventDefault();
+      setDragging(true);
+      overlay.setPointerCapture(e.pointerId);
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const rect = overlay.getBoundingClientRect();
+      const startLeft = rect.left - wrapper.getBoundingClientRect().left;
+      const startTop = rect.top - wrapper.getBoundingClientRect().top;
+      const onMove = (ev: PointerEvent) => {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        const left = Math.max(0, Math.min(wrapperRect.width - w, startLeft + dx));
+        const top = Math.max(0, Math.min(wrapperRect.height - h, startTop + dy));
+        setOverlayStyle({ left, top });
+        // Normalize to 0..1 for the hook
+        const maxX = Math.max(1, wrapperRect.width - w);
+        const maxY = Math.max(1, wrapperRect.height - h);
+        rec.setWebcamFreePos({ x: left / maxX, y: top / maxY });
+      };
+      const onUp = () => {
+        setDragging(false);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    },
+    [showIdleOverlay, rec],
+  );
 
   const goFullscreen = () => {
     const el = wrapperRef.current;
@@ -86,6 +180,8 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
     );
   };
 
+  const pipSupported = typeof document !== "undefined" && "pictureInPictureEnabled" in document;
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
@@ -93,8 +189,32 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
           <h2 className="text-base font-semibold leading-tight">{t("livePreviewTitle")}</h2>
           <p className="text-xs text-muted-foreground">{t("livePreviewDesc")}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {statusBadge()}
+          {(rec.isRecording || rec.isPaused) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={rec.captureSnapshot}
+              aria-label={t("captureSnapshot")}
+              title={t("captureSnapshot")}
+            >
+              <Camera className="size-4" />
+            </Button>
+          )}
+          {(rec.isRecording || rec.isPaused) && pipSupported && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("size-8", rec.pipActive && "bg-primary/10 text-primary")}
+              onClick={() => void rec.togglePiP()}
+              aria-label={t("pictureInPicture")}
+              title={t("pictureInPicture")}
+            >
+              <PictureInPicture2 className="size-4" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -116,9 +236,7 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
         className="preview-inset relative aspect-video w-full overflow-hidden rounded-2xl border border-border/60 bg-[#0b0f10]"
       >
         {/* Empty state — recessed viewport with wireframe monitor */}
-        {isEmpty && (
-          <div className="dot-grid absolute inset-0 opacity-25" />
-        )}
+        {isEmpty && <div className="dot-grid absolute inset-0 opacity-25" />}
         {isEmpty && (
           <div className="absolute inset-0 grid place-items-center p-6 text-center">
             <div className="max-w-sm">
@@ -158,6 +276,42 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
           />
         )}
 
+        {/* Draggable idle webcam overlay (CSS-positioned, separate from canvas) */}
+        {showIdleOverlay && rec.webcamStream && overlayStyle && (
+          <div
+            ref={overlayRef}
+            onPointerDown={onPointerDown}
+            className={cn(
+              "webcam-draggable group absolute z-20 touch-none select-none",
+              dragging && "cursor-grabbing",
+            )}
+            style={{
+              left: overlayStyle.left,
+              top: overlayStyle.top,
+              width: `${(rec.settings.webcamSize * Math.min(wrapperSize.width, wrapperSize.height)) / 100}px`,
+            }}
+          >
+            <IdleWebcamVideo
+              stream={rec.webcamStream}
+              shape={rec.settings.webcamShape}
+              shadow={rec.settings.webcamShadow}
+            />
+            {/* Drag handle hint */}
+            <div
+              className={cn(
+                "absolute inset-x-0 top-0 flex justify-center transition-opacity",
+                rec.settings.webcamShape === "circle" ? "rounded-full" : "rounded-t-xl",
+                dragging ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+              )}
+            >
+              <div className="flex items-center gap-1 rounded-b-md bg-black/60 px-2 py-0.5 text-[9px] font-medium text-white backdrop-blur-sm">
+                <GripVertical className="size-2.5" />
+                {t("dragToMove")}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Countdown overlay */}
         {rec.status === "countdown" && rec.countdownValue != null && (
           <div className="absolute inset-0 grid place-items-center bg-background/70 backdrop-blur-sm">
@@ -173,17 +327,24 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
 
         {/* Source chips */}
         <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-1.5">
-          {rec.settings.webcamEnabled && (
-            <Chip icon={Webcam} label={t("camOn")} tone="emerald" />
-          )}
-          {rec.settings.micEnabled && (
-            <Chip icon={Mic} label={t("micOn")} tone="emerald" />
-          )}
+          {rec.settings.webcamEnabled && <Chip icon={Webcam} label={t("camOn")} tone="emerald" />}
+          {rec.settings.micEnabled && <Chip icon={Mic} label={t("micOn")} tone="emerald" />}
           {rec.settings.systemAudioEnabled && (
             <Chip icon={Volume2} label={t("audioOn")} tone="amber" />
           )}
           <Chip icon={Monitor} label={t("screenOn")} tone="emerald" />
         </div>
+
+        {/* Live stats overlay (during recording) */}
+        {(rec.isRecording || rec.isPaused) && (
+          <div className="pointer-events-none absolute right-3 top-3 flex items-center gap-1.5 rounded-lg bg-black/55 px-2.5 py-1.5 backdrop-blur-sm">
+            <Stat icon={Timer} label={t("statElapsed")} value={formatDuration(rec.liveStats.elapsed)} />
+            <span className="h-3 w-px bg-white/15" />
+            <Stat icon={HardDrive} label={t("statSize")} value={formatBytes(rec.liveStats.estimatedBytes)} />
+            <span className="h-3 w-px bg-white/15" />
+            <Stat icon={Activity} label={t("statFps")} value={`${rec.liveStats.fps}`} />
+          </div>
+        )}
 
         {/* Mic level meter */}
         {rec.isRecording && rec.settings.micEnabled && (
@@ -244,5 +405,56 @@ function Chip({
       <Icon className="size-2.5" />
       {label}
     </span>
+  );
+}
+
+function Stat({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center gap-1 text-white/90" dir="ltr">
+      <Icon className="size-3 text-white/60" />
+      <span className="font-mono text-[10px] font-semibold tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+/** Webcam video that binds a MediaStream via ref (srcObject is not a React prop). */
+function IdleWebcamVideo({
+  stream,
+  shape,
+  shadow,
+}: {
+  stream: MediaStream;
+  shape: "rounded" | "circle";
+  shadow: boolean;
+}) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    if (v.srcObject !== stream) {
+      v.srcObject = stream;
+      void v.play().catch(() => {});
+    }
+  }, [stream]);
+  return (
+    <video
+      ref={ref}
+      autoPlay
+      muted
+      playsInline
+      className={cn(
+        "block h-auto w-full bg-black object-cover ring-2 ring-white/80 transition-shadow",
+        shape === "circle" ? "rounded-full" : "rounded-xl",
+        shadow && "shadow-lg shadow-black/50",
+      )}
+    />
   );
 }
