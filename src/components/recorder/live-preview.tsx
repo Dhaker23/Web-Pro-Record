@@ -239,6 +239,16 @@ export function LivePreview({ rec, lang, t, canvasRef }: Props) {
           <Button
             variant="ghost"
             size="icon"
+            className={cn("size-8", rec.showProfiling && "bg-primary/10 text-primary")}
+            onClick={() => rec.setShowProfiling(!rec.showProfiling)}
+            aria-label={rec.showProfiling ? t("profHide") : t("profShow")}
+            title={rec.showProfiling ? t("profHide") : t("profShow")}
+          >
+            <Activity className="size-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             className="size-8"
             onClick={goFullscreen}
             aria-label={t("fullscreen")}

@@ -240,8 +240,40 @@ Priority for next phase: manual real-browser recording validation, then add drag
 - **Files changed:** `src/lib/i18n.ts`, `src/lib/shortcuts.ts` (new), `src/lib/overlay-templates.ts` (new), `src/hooks/use-recorder.ts`, `src/components/recorder/header.tsx`, `src/components/recorder/shortcut-editor.tsx` (new), `src/components/recorder/overlay-templates.tsx` (new), `src/components/recorder/control-panel.tsx`, `src/components/recorder/stats-summary.tsx`, `src/app/page.tsx`.
 
 ### Remaining recommendations for next phase
-1. **Performance profiling panel** — add a debug panel showing render time per frame, memory usage, track state, audio context state.
-2. **Annotation tools** — draw on the canvas during recording (text, arrows, highlights).
-3. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets + shortcut editor + templates + export stats in Chrome (cannot be done in headless).
+1. ~~Performance profiling panel~~ ✅ DONE (round 7)
+2. ~~Multi-recording history~~ ✅ DONE (round 7 — in-memory with thumbnails)
+3. **Annotation tools** — draw on the canvas during recording (text, arrows, highlights).
 4. **Recording scheduler** — schedule a recording to start at a specific time.
-5. **Multi-recording history** — keep a local history of past recordings (in-memory or IndexedDB) with thumbnails.
+5. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets + shortcut editor + templates + export stats + profiling + history in Chrome (cannot be done in headless).
+
+---
+
+## Round 7 — Performance Profiling + Recording History (cron webDevReview)
+
+### Task ID: 7
+### Agent: main (cron webDevReview)
+### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+
+### Work Log
+- Read worklog; confirmed rounds 1–6 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+- VLM critical assessment identified: live preview empty state, footer notes density as weak areas; recommended history, profiling, annotation as new features.
+- **New features added (Round 7):**
+  - **Performance profiling panel** — `ProfilingData` type tracks render time (ms/frame avg), memory used (MB via `performance.memory`, Chromium-only), canvas dimensions, video/audio track readyState, audio context state, and stream track count. The render loop now measures per-frame render time (accumulates `performance.now()` delta around `renderCompositeFrame`). A `startProfiling` interval samples every 1s, resets accumulators, and reads live track/context states. `ProfilingPanel` component renders a 7-metric grid (color-coded emerald/blue/amber) with a live/recording status badge and empty state. Toggleable via an Activity button in the LivePreview header (persists per session via `showProfiling` state). Full lifecycle integration (started on recording start, paused/resumed with recording, stopped + cleared on cleanup).
+  - **Recording history** — `HistoryEntry` type stores id, url, blob, duration, size, mimeType, dimensions, createdAt, thumbnail (JPEG data URL), and codec. On recording stop, a thumbnail is captured from the canvas via `toDataURL("image/jpeg", 0.6)` and the entry is added to history (max 12, in-memory for the session). `HistoryPanel` component renders a responsive grid of recording cards with thumbnails, duration badges, hover-to-reveal action buttons (restore to player, download, delete), codec labels, file sizes, and timestamps. Actions: `removeHistoryEntry` (revokes URL unless it's the current player source), `clearHistory`, `restoreHistoryEntry` (loads to player + stats), `downloadHistoryEntry`. URL safety: never revokes the URL currently in use by the player.
+- **i18n:** added ~40 new keys (EN + AR) for profiling (title, metrics, states, units) and history (title, actions, labels).
+- **Hook architecture:** new `ProfilingData`, `HistoryEntry` types; new state (`profiling`, `history`, `showProfiling`); new refs (`renderTimeAccumRef`, `renderTimeSamplesRef`, `profilingTimerRef`); new actions (`startProfiling`, `stopProfiling`, `removeHistoryEntry`, `clearHistory`, `restoreHistoryEntry`, `downloadHistoryEntry`, `setShowProfiling`). Render loop instruments render-time measurement. Full lifecycle integration (profiling started/paused/stopped with recording; history entry created on stop).
+- **Styling:** profiling panel with 7 color-coded metric tiles + live status badge + empty state; history panel with thumbnail grid + hover action overlays + duration/size/codec badges; Activity toggle button in preview header with active state. All reduced-motion safe (fade-up animations).
+- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+
+### Stage Summary
+- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 7 features present: Performance monitor panel ✓ (toggleable, empty state visible), Activity toggle button in preview header ✓, history panel (only renders when recordings exist — none in headless) ✓. Keyboard shortcuts (Ctrl+L) still work (toggled EN→AR→RTL live).
+- **VLM verdict (round 7):** Performance monitor panel visible with empty state ✓; Activity toggle button in preview header ✓; overall layout polished and premium ✓; sophisticated dark theme with clear visual hierarchy, consistent glassmorphism, professional color palette; no visible bugs or layout issues.
+- **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-recorder.ts`, `src/components/recorder/profiling-panel.tsx` (new), `src/components/recorder/history-panel.tsx` (new), `src/components/recorder/live-preview.tsx`, `src/app/page.tsx`.
+
+### Remaining recommendations for next phase
+1. **Annotation tools** — draw on the canvas during recording (text, arrows, highlights).
+2. **Recording scheduler** — schedule a recording to start at a specific time.
+3. **Persist history to IndexedDB** — currently in-memory only; could persist across sessions with IndexedDB.
+4. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets + shortcut editor + templates + export stats + profiling + history in Chrome (cannot be done in headless).
+5. **Export history manifest** — export the history list as a JSON manifest for record-keeping.

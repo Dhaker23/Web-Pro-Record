@@ -72,6 +72,33 @@ export type Clip = {
   elapsed: number;
 };
 
+/** Live performance profiling data for the monitor panel. */
+export type ProfilingData = {
+  renderTime: number; // ms per frame (avg over last second)
+  memoryUsed: number; // MB (if performance.memory available)
+  canvasWidth: number;
+  canvasHeight: number;
+  videoTrackState: string;
+  audioTrackState: string;
+  audioContextState: string;
+  streamTrackCount: number;
+};
+
+/** A past recording kept in history (in-memory for the session). */
+export type HistoryEntry = {
+  id: string;
+  url: string;
+  blob: Blob;
+  duration: number;
+  size: number;
+  mimeType: string;
+  width: number;
+  height: number;
+  createdAt: number;
+  thumbnail: string; // data URL
+  codec: string;
+};
+
 export type RecordingResult = {
   url: string;
   blob: Blob;
@@ -231,6 +258,10 @@ export function useRecorder(
   const [recordingStats, setRecordingStats] = useState<RecordingStats>(null);
   const [clips, setClips] = useState<Clip[]>([]);
   const [clipRecording, setClipRecording] = useState(false);
+  // Round 7 state
+  const [profiling, setProfiling] = useState<ProfilingData | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [showProfiling, setShowProfiling] = useState(false);
 
   // Exposed streams for preview elements
   const [webcamStream, setWebcamStream] = useState<MediaStream | null>(null);
@@ -281,6 +312,10 @@ export function useRecorder(
   const clipRecorderRef = useRef<MediaRecorder | null>(null);
   const clipChunksRef = useRef<Blob[]>([]);
   const clipStreamRef = useRef<MediaStream | null>(null);
+  // Round 7 refs — profiling render-time measurement
+  const renderTimeAccumRef = useRef<number>(0);
+  const renderTimeSamplesRef = useRef<number>(0);
+  const profilingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -409,6 +444,12 @@ export function useRecorder(
     setEffectiveFps(null);
     effectiveFpsRef.current = null;
     setWaveform({ samples: new Uint8Array(0), level: 0 });
+    // Round 7: stop profiling sampler
+    if (profilingTimerRef.current) {
+      clearInterval(profilingTimerRef.current);
+      profilingTimerRef.current = null;
+    }
+    setProfiling(null);
     // Exit PiP if active
     if (typeof document !== "undefined" && document.pictureInPictureElement) {
       try {
@@ -737,7 +778,11 @@ export function useRecorder(
       const targetFps = Number(effectiveFpsRef.current ?? settingsRef.current.frameRate);
       const interval = 1000 / targetFps;
       if (now - lastDraw >= interval) {
+        const t0 = performance.now();
         renderCompositeFrame();
+        // Round 7: accumulate render time for profiling.
+        renderTimeAccumRef.current += performance.now() - t0;
+        renderTimeSamplesRef.current += 1;
         renderFrameCountRef.current += 1;
         lastDraw = now;
       }
@@ -745,6 +790,50 @@ export function useRecorder(
     };
     rafRef.current = requestAnimationFrame(loop);
   }, [stopRaf, renderCompositeFrame]);
+
+  /** Round 7: Start the profiling data sampler (updates every 1s). */
+  const startProfiling = useCallback(() => {
+    if (profilingTimerRef.current) return;
+    profilingTimerRef.current = setInterval(() => {
+      if (statusRef.current !== "recording") return;
+      const avgRender =
+        renderTimeSamplesRef.current > 0
+          ? renderTimeAccumRef.current / renderTimeSamplesRef.current
+          : 0;
+      // Reset accumulators for the next window.
+      renderTimeAccumRef.current = 0;
+      renderTimeSamplesRef.current = 0;
+      // Memory (Chromium-only).
+      const perfWithMemory = performance as Performance & {
+        memory?: { usedJSHeapSize: number };
+      };
+      const memMb = perfWithMemory.memory
+        ? perfWithMemory.memory.usedJSHeapSize / (1024 * 1024)
+        : 0;
+      const canvas = canvasRef.current;
+      const vTrack = screenStreamRef.current?.getVideoTracks()[0];
+      const aTracks = combinedStreamRef.current?.getAudioTracks() ?? [];
+      setProfiling({
+        renderTime: Math.round(avgRender * 10) / 10,
+        memoryUsed: Math.round(memMb * 10) / 10,
+        canvasWidth: canvas?.width ?? 0,
+        canvasHeight: canvas?.height ?? 0,
+        videoTrackState: vTrack?.readyState ?? "—",
+        audioTrackState: aTracks[0]?.readyState ?? "—",
+        audioContextState: audioContextRef.current?.state ?? "closed",
+        streamTrackCount: combinedStreamRef.current?.getTracks().length ?? 0,
+      });
+    }, 1000);
+  }, [canvasRef]);
+
+  /** Round 7: Stop the profiling data sampler. */
+  const stopProfiling = useCallback(() => {
+    if (profilingTimerRef.current) {
+      clearInterval(profilingTimerRef.current);
+      profilingTimerRef.current = null;
+    }
+    setProfiling(null);
+  }, []);
 
   /** Measure actual render FPS over a 1s window via a separate rAF. */
   const startFpsMeasurement = useCallback(() => {
@@ -1160,6 +1249,77 @@ export function useRecorder(
     setSettings((prev) => ({ ...prev, ...partial }));
   }, []);
 
+  // ---------------- Round 7: history management ----------------
+
+  /** Remove a single history entry by id (revokes its URL). */
+  const removeHistoryEntry = useCallback((id: string) => {
+    setHistory((prev) => {
+      const entry = prev.find((e) => e.id === id);
+      // Don't revoke if it's the current result URL (still in use by the player).
+      if (entry && entry.url !== resultUrlRef.current) {
+        URL.revokeObjectURL(entry.url);
+      }
+      return prev.filter((e) => e.id !== id);
+    });
+  }, []);
+
+  /** Clear all history entries (revokes URLs that aren't the current result). */
+  const clearHistory = useCallback(() => {
+    setHistory((prev) => {
+      prev.forEach((e) => {
+        if (e.url !== resultUrlRef.current) URL.revokeObjectURL(e.url);
+      });
+      return [];
+    });
+  }, []);
+
+  /** Restore a history entry to the player (sets it as the current result). */
+  const restoreHistoryEntry = useCallback((id: string) => {
+    setHistory((prev) => {
+      const entry = prev.find((e) => e.id === id);
+      if (!entry) return prev;
+      // Set as current result so the player + stats show it.
+      if (resultUrlRef.current && resultUrlRef.current !== entry.url) {
+        URL.revokeObjectURL(resultUrlRef.current);
+      }
+      resultUrlRef.current = entry.url;
+      setResult({
+        url: entry.url,
+        blob: entry.blob,
+        duration: entry.duration,
+        mimeType: entry.mimeType,
+        size: entry.size,
+        width: entry.width,
+        height: entry.height,
+        createdAt: entry.createdAt,
+      });
+      setRecordingStats({
+        avgFps: 0,
+        totalFrames: 0,
+        peakAudio: 0,
+        duration: entry.duration,
+        fileSize: entry.size,
+        width: entry.width,
+        height: entry.height,
+        codec: entry.codec,
+      });
+      setStatus("stopped");
+      return prev;
+    });
+  }, []);
+
+  /** Download a history entry's video. */
+  const downloadHistoryEntry = useCallback((entry: HistoryEntry) => {
+    const ext = mimeToExtension(entry.mimeType);
+    const a = document.createElement("a");
+    a.href = entry.url;
+    const ts = new Date(entry.createdAt).toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    a.download = `web-pro-record-${ts}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }, []);
+
   /** Ensure a hidden <video> exists for PiP (must be in DOM & playing for PiP). */
   const ensurePipVideo = useCallback(() => {
     if (typeof document === "undefined") return;
@@ -1438,6 +1598,30 @@ export function useRecorder(
           height,
           codec: mimeToLabel(finalMime),
         });
+        // Round 7: add to recording history with a thumbnail.
+        try {
+          const thumbCanvas = canvasRef.current;
+          const thumb =
+            thumbCanvas && thumbCanvas.width > 0
+              ? thumbCanvas.toDataURL("image/jpeg", 0.6)
+              : "";
+          const entry: HistoryEntry = {
+            id: `rec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            url,
+            blob,
+            duration: Math.max(0, duration),
+            size: blob.size,
+            mimeType: finalMime,
+            width,
+            height,
+            createdAt: Date.now(),
+            thumbnail: thumb,
+            codec: mimeToLabel(finalMime),
+          };
+          setHistory((prev) => [entry, ...prev].slice(0, 12));
+        } catch {
+          /* thumbnail may fail if canvas tainted; ignore */
+        }
         setStatus("stopped");
         setElapsed(Math.max(0, duration));
         // Cleanup media tracks but keep result
@@ -1505,6 +1689,8 @@ export function useRecorder(
       fpsSamplesRef.current = 0;
       ensurePipVideo();
       startStatsLoop();
+      // Round 7: start profiling sampler
+      startProfiling();
       // Round 4: FPS measurement + adaptive downgrade + waveform
       if (useCanvas) {
         startFpsMeasurement();
@@ -1521,7 +1707,7 @@ export function useRecorder(
       setError({ kind: "generic", message: "errGeneric" });
       cleanupMedia();
     }
-  }, [canvasRef, features, ensureHiddenVideos, runCountdown, buildMixedAudio, startRenderLoop, startTimer, startMicLevelLoop, startWaveformLoop, startIdlePreviewLoop, selectedMicId, cleanupMedia, ensurePipVideo, startStatsLoop, startFpsMeasurement, checkAdaptiveFps]);
+  }, [canvasRef, features, ensureHiddenVideos, runCountdown, buildMixedAudio, startRenderLoop, startTimer, startMicLevelLoop, startWaveformLoop, startIdlePreviewLoop, selectedMicId, cleanupMedia, ensurePipVideo, startStatsLoop, startFpsMeasurement, checkAdaptiveFps, startProfiling]);
 
   const pauseRecording = useCallback(() => {
     const rec = mediaRecorderRef.current;
@@ -1537,8 +1723,9 @@ export function useRecorder(
       stopStatsLoop();
       stopWaveformLoop();
       stopFpsMeasurement();
+      stopProfiling();
     }
-  }, [pauseTimer, stopMicLevelLoop, stopStatsLoop, stopWaveformLoop, stopFpsMeasurement]);
+  }, [pauseTimer, stopMicLevelLoop, stopStatsLoop, stopWaveformLoop, stopFpsMeasurement, stopProfiling]);
 
   const resumeRecording = useCallback(() => {
     const rec = mediaRecorderRef.current;
@@ -1552,12 +1739,13 @@ export function useRecorder(
       resumeTimer();
       startStatsLoop();
       startFpsMeasurement();
+      startProfiling();
       if (analyserRef.current) {
         startMicLevelLoop();
         startWaveformLoop();
       }
     }
-  }, [resumeTimer, startMicLevelLoop, startStatsLoop, startWaveformLoop, startFpsMeasurement]);
+  }, [resumeTimer, startMicLevelLoop, startStatsLoop, startWaveformLoop, startFpsMeasurement, startProfiling]);
 
   // ---------------- Reset / actions ----------------
 
@@ -1751,6 +1939,16 @@ export function useRecorder(
     exportStatsJson,
     downloadStatsJson,
     copyStatsJson,
+    // Round 7 state
+    profiling,
+    showProfiling,
+    history,
+    // Round 7 actions
+    setShowProfiling,
+    removeHistoryEntry,
+    clearHistory,
+    restoreHistoryEntry,
+    downloadHistoryEntry,
     isRecording,
     isPaused,
     canStart,

@@ -20,6 +20,8 @@ import { FinalRecording } from "@/components/recorder/final-recording";
 import { SnapshotsGallery } from "@/components/recorder/snapshots-gallery";
 import { ClipsGallery } from "@/components/recorder/clips-gallery";
 import { StatsSummary } from "@/components/recorder/stats-summary";
+import { ProfilingPanel } from "@/components/recorder/profiling-panel";
+import { HistoryPanel } from "@/components/recorder/history-panel";
 import { HelpSection } from "@/components/recorder/help-section";
 import { Footer } from "@/components/recorder/footer";
 import { Button } from "@/components/ui/button";
@@ -239,13 +241,15 @@ export default function Home() {
             <ControlPanel rec={rec} lang={lang} t={t} />
           </div>
 
-          {/* Right: preview + galleries + final + stats */}
+          {/* Right: preview + galleries + final + stats + profiling + history */}
           <div className="flex flex-col gap-6">
             <LivePreview rec={rec} lang={lang} t={t} canvasRef={canvasRef} />
+            <ProfilingPanel rec={rec} lang={lang} t={t} />
             <ClipsGallery rec={rec} lang={lang} t={t} />
             <SnapshotsGallery rec={rec} lang={lang} t={t} />
             <FinalRecording rec={rec} lang={lang} t={t} />
             <StatsSummary rec={rec} lang={lang} t={t} />
+            <HistoryPanel rec={rec} lang={lang} t={t} />
           </div>
         </div>
       </main>
