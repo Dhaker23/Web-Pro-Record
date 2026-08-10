@@ -1141,7 +1141,7 @@ export function useRecorder(
 
   // ---------------- Audio mixing ----------------
 
-  const buildMixedAudio = useCallback((): MediaStreamTrack[] => {
+  const buildMixedAudio = useCallback(async (): Promise<MediaStreamTrack[]> => {
     const s = settingsRef.current;
     const AC: typeof AudioContext =
       (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext ||
@@ -1182,25 +1182,23 @@ export function useRecorder(
       analyserRef.current = null;
     }
 
-    // ROOT CAUSE FIX: Do NOT force sampleRate — let the browser use the
-    // default hardware sample rate. Forcing 48000 when the mic runs at 44100
-    // causes createMediaStreamSource to produce SILENCE because the browser
-    // can't resample properly in all cases.
+    // Do NOT force sampleRate — let the browser use the default hardware rate.
     const ctx = new AC();
     audioContextRef.current = ctx;
 
-    // ROOT CAUSE FIX: Resume the AudioContext SYNCHRONOUSLY before building
-    // the graph. ctx.resume() returns a Promise but the state transition
-    // happens synchronously in most browsers when called within a user
-    // gesture. We must ensure the context is "running" BEFORE connecting
-    // nodes, otherwise the first few seconds of audio can be lost.
+    // ROOT CAUSE FIX: await resume() BEFORE building the audio graph.
+    // Browsers create AudioContext in "suspended" state. If we connect
+    // nodes and start MediaRecorder before resume() completes, the
+    // MediaStreamDestination produces SILENCE because the audio processing
+    // thread hasn't started yet. We must await the resume() to guarantee
+    // the context is "running" before any audio flows.
     if (ctx.state === "suspended") {
-      // Fire-and-forget the resume — the state changes synchronously.
-      void ctx.resume().then(() => {
-        console.debug("[buildMixedAudio] AudioContext resume completed, state:", ctx.state);
-      }).catch((err) => {
+      try {
+        await ctx.resume();
+        console.debug("[buildMixedAudio] AudioContext resumed, state:", ctx.state);
+      } catch (err) {
         console.error("[buildMixedAudio] Failed to resume AudioContext:", err);
-      });
+      }
     }
 
     const dest = ctx.createMediaStreamDestination();
@@ -1216,7 +1214,6 @@ export function useRecorder(
       const screenStream = screenStreamRef.current;
       if (screenStream) {
         try {
-          // Extract audio-only tracks into a new MediaStream.
           const audioOnlyStream = new MediaStream(screenStream.getAudioTracks());
           const src = ctx.createMediaStreamSource(audioOnlyStream);
           const gain = ctx.createGain();
@@ -1235,7 +1232,6 @@ export function useRecorder(
       const micStream = micStreamRef.current;
       if (micStream) {
         try {
-          // Log mic track details for debugging.
           const micTrack = micTracks[0];
           console.debug("[buildMixedAudio] Mic track:", {
             kind: micTrack?.kind,
@@ -1246,7 +1242,6 @@ export function useRecorder(
             settings: micTrack?.getSettings(),
           });
 
-          // Extract audio-only tracks into a new MediaStream.
           const audioOnlyStream = new MediaStream(micStream.getAudioTracks());
           const src = ctx.createMediaStreamSource(audioOnlyStream);
           const gain = ctx.createGain();
@@ -1270,7 +1265,6 @@ export function useRecorder(
     const resultTracks = dest.stream.getAudioTracks();
     console.debug("[buildMixedAudio] Returning", resultTracks.length, "mixed audio tracks, ctx state:", ctx.state);
 
-    // Verify the destination track is live.
     if (resultTracks.length > 0) {
       const dt = resultTracks[0];
       console.debug("[buildMixedAudio] Dest track:", {
@@ -1763,10 +1757,11 @@ export function useRecorder(
         videoTracks = vTrack ? [vTrack] : [];
       }
 
-      // 6) Audio mix — buildMixedAudio returns mixed tracks from AudioContext.
-      // If it returns empty (no mic, or AudioContext failed), fall back to
-      // using the screen's raw audio tracks directly (for system audio only).
-      let audioTracks = buildMixedAudio();
+      // 6) Audio mix — buildMixedAudio is async because it must await
+      // AudioContext.resume() to guarantee the context is "running"
+      // before any audio nodes are connected. Without this await, the
+      // MediaStreamDestination produces SILENCE.
+      let audioTracks = await buildMixedAudio();
       if (audioTracks.length === 0 && s.systemAudioEnabled) {
         const screenAudio = screen.getAudioTracks();
         if (screenAudio.length > 0) {
