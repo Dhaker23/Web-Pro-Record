@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
   // Allow the preview panel domain to access dev resources.
   allowedDevOrigins: ["*.space-z.ai"],
   // TypeScript checking re-enabled (was disabled in scaffold).
