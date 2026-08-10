@@ -34,16 +34,37 @@ export const metadata: Metadata = {
     "screen capture",
     "Web Pro Record",
   ],
-  authors: [{ name: "Amara Dhaker" }],
+  authors: [{ name: "Dhaker Amara" }],
   icons: {
-    icon: "/logo.svg",
+    icon: [
+      { url: "/logo.svg", type: "image/svg+xml" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.svg", type: "image/svg+xml" },
+    ],
   },
+  manifest: "/manifest.json",
   openGraph: {
     title: "Web Pro Record",
     description:
       "Browser-based screen, webcam & microphone recorder. Runs locally. No uploads.",
     siteName: "Web Pro Record",
     type: "website",
+    images: [
+      {
+        url: "/logo.svg",
+        width: 64,
+        height: 64,
+        alt: "Web Pro Record",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: "Web Pro Record",
+    description:
+      "Browser-based screen, webcam & microphone recorder. Runs locally. No uploads.",
+    images: ["/logo.svg"],
   },
 };
 
