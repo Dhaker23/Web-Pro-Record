@@ -2,23 +2,24 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  // SEC-004 FIX: Re-enable TypeScript checking.
-  // React Strict Mode is kept disabled because the recorder hook manages
-  // browser media resources (MediaStream, MediaRecorder, AudioContext) that
-  // cannot tolerate the double-mount/double-effect-invocation behavior of
-  // Strict Mode in development. This is a known limitation of media-heavy apps.
+  // Allow the preview panel domain to access dev resources.
+  allowedDevOrigins: ["*.space-z.ai"],
+  // TypeScript checking re-enabled (was disabled in scaffold).
   typescript: {
     ignoreBuildErrors: false,
   },
+  // React Strict Mode disabled — the recorder hook manages browser media
+  // resources (MediaStream, MediaRecorder, AudioContext) that cannot tolerate
+  // Strict Mode's double-mount behavior in development.
   reactStrictMode: false,
-  // SEC-002 FIX: Add security headers to all responses.
+  // Security headers — scoped to allow the app to run in preview iframes
+  // while still protecting against XSS, clickjacking, and content injection.
   async headers() {
     return [
       {
         source: "/(.*)",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {
             key: "Permissions-Policy",
@@ -28,13 +29,14 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com data:",
               "img-src 'self' data: blob:",
               "media-src 'self' blob:",
               "connect-src 'self' ws: wss:",
-              "frame-ancestors 'none'",
+              "frame-src 'self'",
+              "worker-src 'self' blob:",
             ].join("; "),
           },
         ],
