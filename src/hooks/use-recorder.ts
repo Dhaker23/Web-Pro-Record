@@ -1147,10 +1147,6 @@ export function useRecorder(
       (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext ||
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext!;
     if (!AC) return [];
-    const ctx = new AC();
-    audioContextRef.current = ctx;
-    const dest = ctx.createMediaStreamDestination();
-    audioDestRef.current = dest;
 
     const screenAudioTracks = screenStreamRef.current?.getAudioTracks() ?? [];
     const micTracks = micStreamRef.current?.getAudioTracks() ?? [];
@@ -1161,14 +1157,39 @@ export function useRecorder(
       return [];
     }
 
+    // Create AudioContext — browsers start it in "suspended" state.
+    // We must call resume() or no audio will flow through the graph.
+    const ctx = new AC();
+    audioContextRef.current = ctx;
+
+    // Resume the context immediately (required after user gesture).
+    if (ctx.state === "suspended") {
+      void ctx.resume().catch((err) => {
+        console.error("[buildMixedAudio] Failed to resume AudioContext:", err);
+      });
+    }
+
+    const dest = ctx.createMediaStreamDestination();
+    audioDestRef.current = dest;
+
+    // Create a master gain node to control overall mix level.
+    const masterGain = ctx.createGain();
+    masterGain.gain.value = 1.0;
+    masterGain.connect(dest);
+
     if (hasScreenAudio) {
       const screenStream = screenStreamRef.current;
       if (screenStream) {
         try {
           const src = ctx.createMediaStreamSource(screenStream);
-          src.connect(dest);
+          // System audio should pass through at full volume.
+          const gain = ctx.createGain();
+          gain.gain.value = 1.0;
+          src.connect(gain);
+          gain.connect(masterGain);
+          console.debug("[buildMixedAudio] Screen audio wired:", screenAudioTracks.length, "tracks");
         } catch (err) {
-          console.debug("[buildMixedAudio] Failed to wire screen audio source:", err);
+          console.error("[buildMixedAudio] Failed to wire screen audio source:", err);
         }
       }
     }
@@ -1177,14 +1198,19 @@ export function useRecorder(
       if (micStream) {
         try {
           const src = ctx.createMediaStreamSource(micStream);
-          src.connect(dest);
-          // Analyser for level meter
+          // Mic audio — connect to master gain for recording.
+          const gain = ctx.createGain();
+          gain.gain.value = 1.0;
+          src.connect(gain);
+          gain.connect(masterGain);
+          // Analyser for level meter + waveform (tapped from the mic source).
           const analyser = ctx.createAnalyser();
           analyser.fftSize = 512;
           src.connect(analyser);
           analyserRef.current = analyser;
+          console.debug("[buildMixedAudio] Mic audio wired:", micTracks.length, "tracks");
         } catch (err) {
-          console.debug("[buildMixedAudio] Failed to wire mic audio source:", err);
+          console.error("[buildMixedAudio] Failed to wire mic audio source:", err);
         }
       }
     }
@@ -1492,6 +1518,10 @@ export function useRecorder(
     frameCountRef.current = 0;
     statsTimerRef.current = setInterval(() => {
       if (statusRef.current !== "recording") return;
+      // Ensure AudioContext stays resumed (browsers may suspend it when tab loses focus).
+      if (audioContextRef.current && audioContextRef.current.state === "suspended") {
+        void audioContextRef.current.resume().catch(() => {});
+      }
       const now = performance.now();
       const e = (now - startTimeRef.current - pausedAccumRef.current) / 1000;
       setLiveStats({
@@ -1537,11 +1567,19 @@ export function useRecorder(
 
     try {
       // 1) Screen capture
+      // For system audio: use an object constraint with echoCancellation disabled
+      // (system audio should not be processed through echo cancellation).
       const displayConstraints: DisplayMediaStreamOptions = {
         video: {
           frameRate: { ideal: Number(s.frameRate) },
         } as MediaTrackConstraints,
-        audio: s.systemAudioEnabled,
+        audio: s.systemAudioEnabled
+          ? {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+            }
+          : false,
       };
       let screen: MediaStream;
       try {
@@ -1580,7 +1618,12 @@ export function useRecorder(
         try {
           const micConstraints: MediaStreamConstraints = {
             audio: selectedMicId
-              ? { deviceId: { exact: selectedMicId } }
+              ? {
+                  deviceId: { exact: selectedMicId },
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                  autoGainControl: true,
+                }
               : { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
             video: false,
           };
