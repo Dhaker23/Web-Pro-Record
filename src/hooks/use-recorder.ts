@@ -1146,75 +1146,117 @@ export function useRecorder(
     const AC: typeof AudioContext =
       (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext ||
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext!;
-    if (!AC) return [];
+    if (!AC) {
+      console.error("[buildMixedAudio] AudioContext not available");
+      return [];
+    }
 
     const screenAudioTracks = screenStreamRef.current?.getAudioTracks() ?? [];
     const micTracks = micStreamRef.current?.getAudioTracks() ?? [];
     const hasScreenAudio = s.systemAudioEnabled && screenAudioTracks.length > 0;
     const hasMic = s.micEnabled && micTracks.length > 0;
 
+    console.debug("[buildMixedAudio] Start", {
+      hasScreenAudio,
+      hasMic,
+      screenAudioTrackCount: screenAudioTracks.length,
+      micTrackCount: micTracks.length,
+      systemAudioEnabled: s.systemAudioEnabled,
+      micEnabled: s.micEnabled,
+    });
+
     if (!hasScreenAudio && !hasMic) {
+      console.debug("[buildMixedAudio] No audio sources — returning empty");
       return [];
     }
 
-    // Create AudioContext — browsers start it in "suspended" state.
-    // We must call resume() or no audio will flow through the graph.
-    const ctx = new AC();
-    audioContextRef.current = ctx;
-
-    // Resume the context immediately (required after user gesture).
-    if (ctx.state === "suspended") {
-      void ctx.resume().catch((err) => {
-        console.error("[buildMixedAudio] Failed to resume AudioContext:", err);
-      });
+    // Close any existing AudioContext before creating a new one.
+    if (audioContextRef.current) {
+      try {
+        void audioContextRef.current.close();
+      } catch (err) {
+        console.debug("[buildMixedAudio] Error closing previous AudioContext:", err);
+      }
+      audioContextRef.current = null;
+      audioDestRef.current = null;
+      analyserRef.current = null;
     }
+
+    // Create AudioContext with explicit sample rate matching typical browser output (48kHz).
+    // This prevents sample-rate mismatch issues that cause silence or distortion.
+    const ctx = new AC({ sampleRate: 48000 });
+    audioContextRef.current = ctx;
 
     const dest = ctx.createMediaStreamDestination();
     audioDestRef.current = dest;
 
-    // Create a master gain node to control overall mix level.
+    // Master gain — connects all sources to the destination.
     const masterGain = ctx.createGain();
     masterGain.gain.value = 1.0;
     masterGain.connect(dest);
 
+    // Wire system/tab audio.
     if (hasScreenAudio) {
       const screenStream = screenStreamRef.current;
       if (screenStream) {
         try {
-          const src = ctx.createMediaStreamSource(screenStream);
-          // System audio should pass through at full volume.
+          // Create a NEW MediaStream containing ONLY the audio tracks.
+          // Passing the full screen stream (with video track) to
+          // createMediaStreamSource can cause issues in some browsers.
+          const audioOnlyStream = new MediaStream(screenStream.getAudioTracks());
+          const src = ctx.createMediaStreamSource(audioOnlyStream);
           const gain = ctx.createGain();
           gain.gain.value = 1.0;
           src.connect(gain);
           gain.connect(masterGain);
-          console.debug("[buildMixedAudio] Screen audio wired:", screenAudioTracks.length, "tracks");
+          console.debug("[buildMixedAudio] Screen audio wired OK");
         } catch (err) {
-          console.error("[buildMixedAudio] Failed to wire screen audio source:", err);
+          console.error("[buildMixedAudio] Failed to wire screen audio:", err);
         }
       }
     }
+
+    // Wire microphone audio.
     if (hasMic) {
       const micStream = micStreamRef.current;
       if (micStream) {
         try {
-          const src = ctx.createMediaStreamSource(micStream);
-          // Mic audio — connect to master gain for recording.
+          // Create audio-only stream from mic (mic stream should be audio-only
+          // already, but this ensures it).
+          const audioOnlyStream = new MediaStream(micStream.getAudioTracks());
+          const src = ctx.createMediaStreamSource(audioOnlyStream);
           const gain = ctx.createGain();
           gain.gain.value = 1.0;
           src.connect(gain);
           gain.connect(masterGain);
-          // Analyser for level meter + waveform (tapped from the mic source).
+
+          // Analyser for level meter + waveform visualization.
           const analyser = ctx.createAnalyser();
           analyser.fftSize = 512;
+          analyser.smoothingTimeConstant = 0.3;
           src.connect(analyser);
           analyserRef.current = analyser;
-          console.debug("[buildMixedAudio] Mic audio wired:", micTracks.length, "tracks");
+          console.debug("[buildMixedAudio] Mic audio wired OK");
         } catch (err) {
-          console.error("[buildMixedAudio] Failed to wire mic audio source:", err);
+          console.error("[buildMixedAudio] Failed to wire mic audio:", err);
         }
       }
     }
-    return dest.stream.getAudioTracks();
+
+    // Resume AudioContext — MUST be done after creating the graph.
+    // Browsers create AudioContext in "suspended" state; without resume(),
+    // no audio flows through the graph and recordings are SILENT.
+    // This is a user-gesture-adjacent call (recording was started by a click).
+    const resumePromise = ctx.resume();
+    resumePromise.then(() => {
+      console.debug("[buildMixedAudio] AudioContext resumed, state:", ctx.state);
+    }).catch((err) => {
+      console.error("[buildMixedAudio] Failed to resume AudioContext:", err);
+    });
+
+    const resultTracks = dest.stream.getAudioTracks();
+    console.debug("[buildMixedAudio] Returning", resultTracks.length, "mixed audio tracks");
+    return resultTracks;
   }, []);
 
   // ---------------- Timer ----------------
@@ -1359,7 +1401,7 @@ export function useRecorder(
       clipChunksRef.current = [];
       setClipRecording(false);
     };
-    recorder.start();
+    recorder.start(1000); // 1-second timeslice for reliable audio data
     // Auto-stop after 5 seconds.
     setTimeout(() => {
       if (recorder.state !== "inactive") {
@@ -1567,19 +1609,14 @@ export function useRecorder(
 
     try {
       // 1) Screen capture
-      // For system audio: use an object constraint with echoCancellation disabled
-      // (system audio should not be processed through echo cancellation).
+      // For system audio: Chrome requires `audio: true` (boolean) for getDisplayMedia
+      // to request tab/system audio. Object constraints with echoCancellation: false
+      // can actually PREVENT system audio capture in some Chrome versions.
       const displayConstraints: DisplayMediaStreamOptions = {
         video: {
           frameRate: { ideal: Number(s.frameRate) },
         } as MediaTrackConstraints,
-        audio: s.systemAudioEnabled
-          ? {
-              echoCancellation: false,
-              noiseSuppression: false,
-              autoGainControl: false,
-            }
-          : false,
+        audio: s.systemAudioEnabled,
       };
       let screen: MediaStream;
       try {
@@ -1702,8 +1739,17 @@ export function useRecorder(
         videoTracks = vTrack ? [vTrack] : [];
       }
 
-      // 6) Audio mix
-      const audioTracks = buildMixedAudio();
+      // 6) Audio mix — buildMixedAudio returns mixed tracks from AudioContext.
+      // If it returns empty (no mic, or AudioContext failed), fall back to
+      // using the screen's raw audio tracks directly (for system audio only).
+      let audioTracks = buildMixedAudio();
+      if (audioTracks.length === 0 && s.systemAudioEnabled) {
+        const screenAudio = screen.getAudioTracks();
+        if (screenAudio.length > 0) {
+          audioTracks = screenAudio;
+          console.debug("[startRecording] Using raw screen audio tracks (no mixing needed)");
+        }
+      }
 
       // 7) Combined stream
       const combined = new MediaStream([...videoTracks, ...audioTracks]);
