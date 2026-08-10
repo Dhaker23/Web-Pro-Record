@@ -4,14 +4,9 @@
   "description": "Premium browser-based screen + webcam + microphone recorder",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "/logo.png",
       "sizes": "any",
-      "type": "image/svg+xml"
-    },
-    {
-      "src": "/logo.svg",
-      "sizes": "64x64",
-      "type": "image/svg+xml"
+      "type": "image/png"
     }
   ],
   "start_url": "/",

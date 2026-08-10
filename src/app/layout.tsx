@@ -44,9 +44,7 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/logo.svg",
-        width: 64,
-        height: 64,
+        url: "/logo.png",
         alt: "Web Pro Record",
       },
     ],
@@ -56,7 +54,7 @@ export const metadata: Metadata = {
     title: "Web Pro Record",
     description:
       "Browser-based screen, webcam & microphone recorder. Runs locally. No uploads.",
-    images: ["/logo.svg"],
+    images: ["/logo.png"],
   },
 };
 
