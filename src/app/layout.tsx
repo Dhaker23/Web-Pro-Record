@@ -35,14 +35,6 @@ export const metadata: Metadata = {
     "Web Pro Record",
   ],
   authors: [{ name: "Dhaker Amara" }],
-  icons: {
-    icon: [
-      { url: "/logo.svg", type: "image/svg+xml" },
-    ],
-    apple: [
-      { url: "/apple-touch-icon.svg", type: "image/svg+xml" },
-    ],
-  },
   manifest: "/manifest.json",
   openGraph: {
     title: "Web Pro Record",
