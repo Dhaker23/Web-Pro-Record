@@ -1,7 +1,6 @@
 "use client";
 
 import { Check, X, Info, Monitor, Mic, Video, Square, AlertTriangle } from "lucide-react";
-import { cn } from "@/lib/utils";
 import type { UseRecorder } from "@/hooks/use-recorder";
 import type { Lang } from "@/lib/i18n";
 
@@ -92,6 +91,3 @@ export function HelpSection({ rec, lang, t }: Props) {
     </section>
   );
 }
-
-// keep cn import used (avoids unused lint in some setups)
-void cn;

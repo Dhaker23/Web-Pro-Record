@@ -47,8 +47,9 @@ export function pickMimeType(): string {
   for (const type of candidates) {
     try {
       if (MediaRecorder.isTypeSupported(type)) return type;
-    } catch {
-      /* ignore */
+    } catch (err) {
+      // Some browsers throw on isTypeSupported for unknown MIME strings.
+      console.debug(`[pickMimeType] isTypeSupported("${type}") threw:`, err);
     }
   }
   return "";
@@ -128,7 +129,9 @@ export async function enumerateDevices(): Promise<DeviceList> {
       cameras: devices.filter((d) => d.kind === "videoinput"),
       mics: devices.filter((d) => d.kind === "audioinput"),
     };
-  } catch {
+  } catch (err) {
+    // enumerateDevices may be blocked before permission grant or unsupported.
+    console.debug("[enumerateDevices] Failed to enumerate media devices:", err);
     return { cameras: [], mics: [] };
   }
 }

@@ -22,7 +22,7 @@ type Shortcut = {
   label: string;
 };
 
-export function ShortcutsDialog({ lang, t }: Props) {
+export function ShortcutsDialog({ t }: Props) {
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
   const mod = isMac ? "⌘" : "Ctrl";
 

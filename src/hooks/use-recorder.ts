@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import {
   type OutputQuality,
@@ -18,6 +18,8 @@ import {
   type FeatureSupport,
 } from "@/lib/recorder-utils";
 import type { WebcamPosition, WebcamShape, FrameRate } from "@/lib/i18n";
+import { downloadBlob, downloadDataUrl } from "@/lib/download-utils";
+import { copyToClipboard } from "@/lib/clipboard-utils";
 
 export type RecStatus = "idle" | "countdown" | "recording" | "paused" | "stopped";
 
@@ -219,7 +221,8 @@ function loadPrefs(): Partial<PersistablePrefs> | null {
       }
     }
     return result as Partial<PersistablePrefs>;
-  } catch {
+  } catch (err) {
+    console.error("[loadPrefs] Failed to parse persisted prefs JSON:", err);
     return null;
   }
 }
@@ -228,8 +231,9 @@ function savePrefs(prefs: PersistablePrefs): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(PREF_KEY, JSON.stringify(prefs));
-  } catch {
-    /* storage blocked — ignore silently (in-memory only) */
+  } catch (err) {
+    // Storage may be blocked (private browsing / quota) — fall back to in-memory only.
+    console.error("[savePrefs] Failed to persist prefs to localStorage:", err);
   }
 }
 
@@ -533,8 +537,8 @@ export function useRecorder(
     if (typeof document !== "undefined" && document.pictureInPictureElement) {
       try {
         void document.exitPictureInPicture();
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.debug("[cleanupMedia] exitPictureInPicture failed:", err);
       }
     }
     setPipActive(false);
@@ -548,8 +552,8 @@ export function useRecorder(
     if (rec && rec.state !== "inactive") {
       try {
         rec.stop();
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.debug("[cleanupMedia] MediaRecorder.stop failed:", err);
       }
     }
     mediaRecorderRef.current = null;
@@ -568,8 +572,8 @@ export function useRecorder(
     if (audioContextRef.current) {
       try {
         void audioContextRef.current.close();
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.debug("[cleanupMedia] AudioContext.close failed:", err);
       }
       audioContextRef.current = null;
       audioDestRef.current = null;
@@ -622,8 +626,8 @@ export function useRecorder(
       }
       try {
         rec.stop();
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.debug("[stopRecording] MediaRecorder.stop failed:", err);
       }
       // onstop handles state + cleanup of tracks
     },
@@ -747,7 +751,8 @@ export function useRecorder(
 
     // Draw logo watermark
     if (showLogo) {
-      const img = watermarkLogoImgRef.current!;
+      const img = watermarkLogoImgRef.current;
+      if (!img) return;
       const logoH = Math.round(h * Math.max(0.02, Math.min(0.15, s.watermarkLogoSize)));
       const aspect = img.width && img.height ? img.width / img.height : 1;
       const logoW = Math.round(logoH * aspect);
@@ -823,9 +828,6 @@ export function useRecorder(
       ctx.save();
       // Clip shape
       if (s.webcamShape === "circle") {
-        const cx = x + targetW / 2;
-        const cy = y + targetH / 2;
-        const r = Math.min(targetW, targetH) / 2;
         // Recompute box to square for circle
         const side = Math.min(targetW, targetH);
         const sx = x + (targetW - side) / 2;
@@ -846,7 +848,6 @@ export function useRecorder(
           ctx.stroke();
         }
         ctx.restore();
-        void cx; void cy; void r;
       } else {
         const radius = Math.round(targetW * 0.12);
         if (s.webcamShadow) {
@@ -1161,24 +1162,30 @@ export function useRecorder(
     }
 
     if (hasScreenAudio) {
-      try {
-        const src = ctx.createMediaStreamSource(screenStreamRef.current!);
-        src.connect(dest);
-      } catch {
-        /* ignore */
+      const screenStream = screenStreamRef.current;
+      if (screenStream) {
+        try {
+          const src = ctx.createMediaStreamSource(screenStream);
+          src.connect(dest);
+        } catch (err) {
+          console.debug("[buildMixedAudio] Failed to wire screen audio source:", err);
+        }
       }
     }
     if (hasMic) {
-      try {
-        const src = ctx.createMediaStreamSource(micStreamRef.current!);
-        src.connect(dest);
-        // Analyser for level meter
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 512;
-        src.connect(analyser);
-        analyserRef.current = analyser;
-      } catch {
-        /* ignore */
+      const micStream = micStreamRef.current;
+      if (micStream) {
+        try {
+          const src = ctx.createMediaStreamSource(micStream);
+          src.connect(dest);
+          // Analyser for level meter
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 512;
+          src.connect(analyser);
+          analyserRef.current = analyser;
+        } catch (err) {
+          console.debug("[buildMixedAudio] Failed to wire mic audio source:", err);
+        }
       }
     }
     return dest.stream.getAudioTracks();
@@ -1265,8 +1272,9 @@ export function useRecorder(
           (performance.now() - startTimeRef.current - pausedAccumRef.current) / 1000,
       };
       setSnapshots((prev) => [snap, ...prev].slice(0, 24));
-    } catch {
-      /* canvas.toDataURL may throw if tainted; ignore */
+    } catch (err) {
+      // canvas.toDataURL may throw if the canvas is tainted (cross-origin source without CORS).
+      console.debug("[captureSnapshot] canvas.toDataURL failed (likely tainted):", err);
     }
   }, [canvasRef]);
 
@@ -1280,12 +1288,7 @@ export function useRecorder(
 
   /** Download a snapshot as PNG. */
   const downloadSnapshot = useCallback((snap: Snapshot) => {
-    const a = document.createElement("a");
-    a.href = snap.url;
-    a.download = `wpr-snapshot-${Math.round(snap.elapsed)}s.png`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    downloadDataUrl(snap.url, `wpr-snapshot-${Math.round(snap.elapsed)}s.png`);
   }, []);
 
   // ---------------- Round 5: clip capture + preset application ----------------
@@ -1336,8 +1339,8 @@ export function useRecorder(
       if (recorder.state !== "inactive") {
         try {
           recorder.stop();
-        } catch {
-          /* ignore */
+        } catch (err) {
+          console.debug("[captureClip] clip MediaRecorder.stop failed:", err);
         }
       }
     }, 5000);
@@ -1359,13 +1362,8 @@ export function useRecorder(
   }, []);
 
   const downloadClip = useCallback((clip: Clip) => {
-    const a = document.createElement("a");
-    a.href = clip.url;
     const ext = mimeToExtension(pickMimeType());
-    a.download = `wpr-clip-${Math.round(clip.elapsed)}s.${ext}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    downloadBlob(clip.blob, `wpr-clip-${Math.round(clip.elapsed)}s.${ext}`);
   }, []);
 
   /** Apply a recording preset (partial settings merge). */
@@ -1435,13 +1433,8 @@ export function useRecorder(
   /** Download a history entry's video. */
   const downloadHistoryEntry = useCallback((entry: HistoryEntry) => {
     const ext = mimeToExtension(entry.mimeType);
-    const a = document.createElement("a");
-    a.href = entry.url;
     const ts = new Date(entry.createdAt).toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    a.download = `web-pro-record-${ts}.${ext}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    downloadBlob(entry.blob, `web-pro-record-${ts}.${ext}`);
   }, []);
 
   /** Ensure a hidden <video> exists for PiP (must be in DOM & playing for PiP). */
@@ -1482,8 +1475,9 @@ export function useRecorder(
         await video.requestPictureInPicture?.();
         setPipActive(true);
       }
-    } catch {
-      /* PiP not supported or denied — ignore */
+    } catch (err) {
+      // PiP may be unsupported, blocked, or denied by the user — non-fatal.
+      console.debug("[togglePiP] requestPictureInPicture failed:", err);
     }
   }, []);
 
@@ -1612,7 +1606,11 @@ export function useRecorder(
       enumerateDevices().then(setDevices);
 
       // 3) Set up screen video element
-      const sVideo = screenVideoRef.current!;
+      const sVideo = screenVideoRef.current;
+      if (!sVideo) {
+        setError({ kind: "generic", message: "errGeneric" });
+        return;
+      }
       sVideo.srcObject = screen;
       await sVideo.play().catch(() => {});
       // Wait for dimensions
@@ -1629,9 +1627,11 @@ export function useRecorder(
 
       // 4) Webcam video element
       if (s.webcamEnabled && webcamStreamRef.current) {
-        const wVideo = webcamVideoRef.current!;
-        wVideo.srcObject = webcamStreamRef.current;
-        await wVideo.play().catch(() => {});
+        const wVideo = webcamVideoRef.current;
+        if (wVideo) {
+          wVideo.srcObject = webcamStreamRef.current;
+          await wVideo.play().catch(() => {});
+        }
       }
 
       // 5) Build combined stream
@@ -1645,7 +1645,11 @@ export function useRecorder(
       const useCanvas = s.webcamEnabled && features.canvasCapture && !!canvasRef.current;
 
       if (useCanvas) {
-        const canvas = canvasRef.current!;
+        const canvas = canvasRef.current;
+        if (!canvas) {
+          setError({ kind: "generic", message: "errGeneric" });
+          return;
+        }
         canvas.width = width;
         canvas.height = height;
         startRenderLoop();
@@ -1743,8 +1747,9 @@ export function useRecorder(
             codec: mimeToLabel(finalMime),
           };
           setHistory((prev) => [entry, ...prev].slice(0, 12));
-        } catch {
-          /* thumbnail may fail if canvas tainted; ignore */
+        } catch (err) {
+          // Thumbnail generation may fail if the canvas is tainted (cross-origin source).
+          console.debug("[stopRecording] Thumbnail toDataURL failed (likely tainted):", err);
         }
         setStatus("stopped");
         setElapsed(Math.max(0, duration));
@@ -1760,8 +1765,8 @@ export function useRecorder(
         if (audioContextRef.current) {
           try {
             void audioContextRef.current.close();
-          } catch {
-            /* ignore */
+          } catch (err) {
+            console.debug("[stopRecording] AudioContext.close failed:", err);
           }
           audioContextRef.current = null;
           audioDestRef.current = null;
@@ -1838,8 +1843,8 @@ export function useRecorder(
     if (rec && rec.state === "recording") {
       try {
         rec.pause();
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.debug("[pauseRecording] MediaRecorder.pause failed:", err);
       }
       setStatus("paused");
       pauseTimer();
@@ -1856,8 +1861,8 @@ export function useRecorder(
     if (rec && rec.state === "paused") {
       try {
         rec.resume();
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.debug("[resumeRecording] MediaRecorder.resume failed:", err);
       }
       setStatus("recording");
       resumeTimer();
@@ -1912,13 +1917,8 @@ export function useRecorder(
   const downloadVideo = useCallback(() => {
     if (!result) return;
     const ext = mimeToExtension(result.mimeType);
-    const a = document.createElement("a");
-    a.href = result.url;
     const ts = new Date(result.createdAt).toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    a.download = `web-pro-record-${ts}.${ext}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    downloadBlob(result.blob, `web-pro-record-${ts}.${ext}`);
   }, [result]);
 
   const copyTechnicalDetails = useCallback(async () => {
@@ -1933,12 +1933,7 @@ export function useRecorder(
       `Resolution: ${result.width} × ${result.height}`,
       `Language: ${langRef.current}`,
     ].join("\n");
-    try {
-      await navigator.clipboard.writeText(details);
-      return true;
-    } catch {
-      return false;
-    }
+    return copyToClipboard(details);
   }, [result]);
 
   /** Round 6: Export recording stats as a JSON string. */
@@ -1973,25 +1968,13 @@ export function useRecorder(
   const downloadStatsJson = useCallback(() => {
     const json = exportStatsJson();
     const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
     const ts = result ? new Date(result.createdAt).toISOString().slice(0, 19).replace(/[:T]/g, "-") : Date.now().toString();
-    a.download = `wpr-stats-${ts}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `wpr-stats-${ts}.json`);
   }, [exportStatsJson, result]);
 
   /** Copy the stats JSON to the clipboard. */
   const copyStatsJson = useCallback(async (): Promise<boolean> => {
-    try {
-      await navigator.clipboard.writeText(exportStatsJson());
-      return true;
-    } catch {
-      return false;
-    }
+    return copyToClipboard(exportStatsJson());
   }, [exportStatsJson]);
 
   /** Round 9: Export a JSON manifest of all recordings in history. */
@@ -2019,25 +2002,13 @@ export function useRecorder(
   const downloadManifest = useCallback(() => {
     const json = exportManifestJson();
     const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
     const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    a.download = `wpr-manifest-${ts}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `wpr-manifest-${ts}.json`);
   }, [exportManifestJson]);
 
   /** Copy the manifest JSON to the clipboard. */
   const copyManifest = useCallback(async (): Promise<boolean> => {
-    try {
-      await navigator.clipboard.writeText(exportManifestJson());
-      return true;
-    } catch {
-      return false;
-    }
+    return copyToClipboard(exportManifestJson());
   }, [exportManifestJson]);
 
   // ---------------- Derived ----------------

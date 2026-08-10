@@ -27,7 +27,7 @@ const TOOLS: { id: AnnotationTool; icon: React.ElementType; label: string }[] = 
   { id: "eraser", icon: Eraser, label: "annotationEraser" },
 ];
 
-export function AnnotationToolbar({ annotations, lang, t, disabled }: Props) {
+export function AnnotationToolbar({ annotations, t, disabled }: Props) {
   const { settings } = annotations;
   const [showColors, setShowColors] = useState(false);
 

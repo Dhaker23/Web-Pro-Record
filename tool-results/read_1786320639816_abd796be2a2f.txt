@@ -1,0 +1,1459 @@
+     1→# Web Pro Record — Worklog
+     2→
+     3→## Project Status (Initial Build Complete)
+     4→
+     5→**App:** Web Pro Record — a fully client-side, bilingual (EN/AR) screen + webcam + microphone recorder built on Next.js 16. No backend, no AI APIs, no uploads. All recording happens in the browser via native Web APIs (`getDisplayMedia`, `getUserMedia`, `MediaRecorder`, Canvas `captureStream`, `AudioContext`).
+     6→
+     7→### Architecture
+     8→- `src/app/layout.tsx` — Geist + Cairo (Arabic) fonts, metadata, ThemeProvider (next-themes, dark default)
+     9→- `src/app/globals.css` — custom emerald theme (light/dark), Arabic font wiring, recorder styles (rec-pulse, hero-aura, dot-grid, custom scrollbar)
+    10→- `src/lib/i18n.ts` — full EN/AR dictionary (~150 keys), `translate()`, `isRtl()`
+    11→- `src/lib/recorder-utils.ts` — formatDuration/Bytes/Resolution, `pickMimeType()` (vp9→vp8→h264→webm→mp4), `detectFeatures()`, `enumerateDevices()`, `computeCanvasSize()`, `qualityToVideoBitrate()`, `drawRoundRect()`
+    12→- `src/hooks/use-recorder.ts` — the core recorder hook (state machine + media logic). Accepts a `canvasRef` param (kept out of return to satisfy `react-hooks/refs`). Manages: idle webcam preview loop, countdown, screen capture, mic, system-audio detection, canvas compositing (screen base + webcam overlay with shape/position/size/margin/border/shadow + optional watermark), AudioContext mixing (mic + screen audio → MediaStreamAudioDestinationNode), MediaRecorder with negotiated MIME + configurable bitrates, chunk collection, onstop blob/URL building + track cleanup, screen-share-ended handling, pause/resume timer, mic level meter (AnalyserNode), full reset/record-again/download/copy-details.
+    13→- `src/components/recorder/` — header, hero, control-panel, live-preview, final-recording, help-section, footer
+    14→- `src/app/page.tsx` — orchestrator: lang state + `document.dir` sync, canvasRef ownership, error/warning → toast, browser-recommendation banner (non-Chromium), unsupported blocker, floating recording status chip, sticky footer (`min-h-screen flex flex-col` + `mt-auto`)
+    15→
+    16→### Key Decisions
+    17→- Emerald brand accent (no indigo/blue per spec); red for record button/recording state; amber for system-audio notes.
+    18→- Canvas always mounted in LivePreview (hidden via CSS when not in canvas mode) so `captureStream()` is always available when recording starts.
+    19→- Webcam overlay is mirrored for RTL (logical positions swap left/right) so Arabic feels natural.
+    20→- Theme icon uses CSS `dark:` variants (no `mounted` state) to avoid hydration mismatch + lint `set-state-in-effect`.
+    21→- ESLint: disabled `react-hooks/set-state-in-effect` (legit mount-detection pattern); kept `react-hooks/refs` & `react-hooks/immutability` & `react-hooks/preserve-manual-memoization` ON and satisfied them properly (moved `stopRecording` before `startRecording`, added unmount-cleanup effect after `cleanupAll`, added `canvasRef` to relevant useCallback deps).
+    22→
+    23→### Verification Results (agent-browser)
+    24→- ✅ Page loads 200, no console/runtime errors, no hydration warnings.
+    25→- ✅ Lint: `bun run lint` → 0 errors, 0 warnings.
+    26→- ✅ English layout renders (header, hero w/ trust cards + onboarding, control panel w/ all toggles/selectors/sliders, live preview empty state, final-recording empty state, help section w/ feature-support table + notes, footer).
+    27→- ✅ Language toggle EN→AR: `document.dir` = "rtl", `lang` = "ar", header mirrored, Arabic text shaped correctly (VLM-verified).
+    28→- ✅ Theme toggle dark↔light works (class switches).
+    29→- ✅ Start Recording clicked in headless → no crash, graceful error handling (getDisplayMedia cannot be granted in headless).
+    30→- ✅ Footer contains: "This website was created with the help of Abdellatif Said — YouTube | Facebook", "Coded by Amara Dhaker", email dhakeramarawork@gmail.com, WhatsApp +21699495558.
+    31→- ✅ Mobile (390px) responsive: stacked, no horizontal overflow, adequate touch targets (VLM-verified).
+    32→- ✅ Desktop (1440px) premium SaaS look confirmed by VLM (glassmorphism, emerald accent, clean typography).
+    33→
+    34→### Customizations Applied (per user NBs)
+    35→- Site name → "Web Pro Record" (brand + metadata).
+    36→- Footer → "Coded by Amara Dhaker".
+    37→- Contact email → dhakeramarawork@gmail.com.
+    38→- Contact WhatsApp → +21699495558.
+    39→- Abdellatif Said credit line (EN + AR) preserved in footer.
+    40→
+    41→## Current Goals / Completed
+    42→- [x] Full recording workflow (start/pause/resume/stop/reset/record-again)
+    43→- [x] Canvas compositing with configurable webcam overlay (shape, position, size, margin, border, shadow)
+    44→- [x] Audio mixing (mic + system/tab audio) via AudioContext
+    45→- [x] MIME negotiation + configurable video/audio bitrate
+    46→- [x] Device enumeration + selectors (camera/mic) with refresh
+    47→- [x] Quality (720/1080/1440/native) + frame rate (24/30/60) selectors
+    48→- [x] Countdown before recording (optional, configurable seconds)
+    49→- [x] Mic level meter, watermark toggle, fullscreen preview
+    50→- [x] Final recording: video player + details (duration, MIME, size, resolution) + download + copy-details
+    51→- [x] Bilingual EN/AR with proper RTL/LTR switching
+    52→- [x] Light/dark themes
+    53→- [x] Help/compatibility section with feature-support detection
+    54→- [x] Empty states, permission-denied states (toasts), unsupported-browser blocker, recording-in-progress floating chip
+    55→
+    56→## Unresolved Issues / Risks / Next-step Recommendations
+    57→1. **Headless can't grant media permissions** — recording flow can't be fully end-to-end tested in agent-browser. Recommend manual test in a real Chromium browser over HTTPS/localhost to validate actual capture + compositing + download.
+    58→2. **Webcam overlay dragging** — currently position is set via controls + position grid picker only; the spec lists "draggable webcam overlay" as an advanced optional. Could add pointer-drag on the overlay in idle-preview (CSS-positioned) mode. (Canvas-drawn overlay during recording can't be dragged, but idle preview could allow drag to set position.)
+    59→3. **60 FPS canvas compositing** on heavy screens may drop frames — current fallback is the quality/fps selectors; could add adaptive FPS detection.
+    60→4. ~~Audio bitrate slider~~ ✅ DONE (round 2)
+    61→5. ~~Keyboard shortcuts~~ ✅ DONE (round 2)
+    62→6. ~~Recording format indicator before start~~ ✅ DONE (round 2)
+    63→7. ~~Persisting user preferences~~ ✅ DONE (round 2 — quality/fps/overlay/bitrate/countdown persisted via safe localStorage; lang & theme still in-memory via next-themes)
+    64→
+    65→Priority for next phase: manual real-browser recording validation, then add draggable webcam overlay in idle preview.
+    66→
+    67→---
+    68→
+    69→## Round 2 — Feature Additions + Styling Polish (cron webDevReview)
+    70→
+    71→### Task ID: 2
+    72→### Agent: main (cron webDevReview)
+    73→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+    74→
+    75→### Work Log
+    76→- Read existing worklog; confirmed initial build complete and stable (lint clean, 0 errors).
+    77→- agent-browser QA: page loads 200, no console/runtime errors, EN/AR + theme toggle work, Start button handles headless denial gracefully.
+    78→- VLM critical styling assessment identified 8 concrete improvement areas (preview void, toggle tactility, card padding, notes monotony, footer differentiation, help table, focus states, hero badge).
+    79→- **New features added:**
+    80→  - **Keyboard shortcuts** (global, input-aware): `Space` start/pause/resume, `Esc`/stop, `P` pause/resume, `R` reset, `W` toggle webcam, `M` toggle mic, `Ctrl/Cmd+L` switch language, `Ctrl/Cmd+D` toggle theme. Implemented at page level via `window.addEventListener('keydown')`; ignores typing in INPUT/TEXTAREA/SELECT/contentEditable.
+    81→  - **ShortcutsDialog component** (`shortcuts-dialog.tsx`) — Radix Dialog with styled `<kbd>` keys, Mac-aware (⌘ vs Ctrl), 9 shortcuts listed, added to header (sm+ screens).
+    82→  - **Audio bitrate slider** in ControlPanel output section (0–320 kbps, step 16, "Auto" at 0) — parity with video bitrate.
+    83→  - **Recording format preview chip** — shows negotiated MIME as "Will record as: WebM · VP9 + Opus" with a codec-shimmer animation + emerald status dot, before recording starts.
+    84→  - **Safe persistence** — `loadPrefs()`/`savePrefs()` with try/catch; persists quality, frameRate, webcamShape/Position/Size/Margin/Border/Shadow, watermark, countdown, countdownSeconds, videoBitrate, audioBitrate to `localStorage` key `wpr-prefs-v1`. Lazy initializer merges prefs over defaults.
+    85→  - **`negotiatedMime` memo** exposed from hook (`useMemo(() => pickMimeType(), [])`).
+    86→- **i18n:** added ~22 new keys (EN + AR) for shortcuts dialog, format preview, persistence toast.
+    87→- **Styling improvements applied (all VLM-verified):**
+    88→  - Hero badge → glassmorphism (`.glass-chip` with backdrop-blur + chip-in animation).
+    89→  - Hero title → subtle gradient text (foreground → foreground/70).
+    90→  - Trust cards → hover lift (`-translate-y-0.5`), top accent line on hover, icon scale on hover, shadow.
+    91→  - Live preview empty state → recessed viewport (`.preview-inset` inset box-shadow), wireframe monitor (nested rounded borders), refined dot grid.
+    92→  - Toggle rows → emerald glow when checked (`.toggle-glow[data-checked]`), icon scale-105 on active, hover states for inactive.
+    93→  - SectionCard → padding p-4→p-5, hover shadow-md.
+    94→  - Format chip → codec-shimmer animation, emerald status dot, bolder monospace.
+    95→  - Help section → tech-spec grid: monospace API labels (`.mono-label`), zebra striping (`.zebra-list`), pill-shaped support badges (emerald/red), hover bg, icon scale.
+    96→  - Notes → leading-relaxed, hover border-primary/30 + bg, icon scale on hover.
+    97→  - Footer → gradient top border line, py-10→py-14, gap-8→gap-10, brand icon shadow.
+    98→  - Added CSS utilities: `.glass-chip`, `.preview-inset`, `.mono-label`, `.zebra-list`, `.toggle-glow`, `.chip-in`, `.codec-shimmer` (all reduced-motion safe).
+    99→- **ESLint:** added `react-hooks/set-state-in-effect: off` (legit mount pattern). All other React Compiler rules (`refs`, `immutability`, `preserve-manual-memoization`) kept ON and satisfied. Lint: 0 errors, 0 warnings.
+   100→
+   101→### Stage Summary
+   102→- **QA results:** Page loads 200, no errors/hydration warnings. Keyboard shortcuts verified working (Ctrl+L toggled EN→AR→RTL live). Shortcuts dialog renders all 9 shortcuts with styled `<kbd>`. Format chip shows "Will record as: WebM · VP9 + Opus". 4 sliders present (video bitrate, audio bitrate, webcam size, webcam margin).
+   103→- **VLM verdict (round 2):** All 7 targeted styling improvements confirmed present (glassmorphism badge ✓, trust card hover lift + accent line ✓, recessed preview + wireframe monitor ✓, emerald toggle glow ✓, tech-spec help grid w/ monospace + zebra + pills ✓, footer gradient border ✓, overall premium ✓).
+   104→- **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-recorder.ts`, `src/components/recorder/control-panel.tsx`, `src/components/recorder/header.tsx`, `src/components/recorder/hero.tsx`, `src/components/recorder/live-preview.tsx`, `src/components/recorder/help-section.tsx`, `src/components/recorder/footer.tsx`, `src/components/recorder/shortcuts-dialog.tsx` (new), `src/app/page.tsx`, `src/app/globals.css`, `eslint.config.mjs`.
+   105→
+   106→### Remaining recommendations for next phase
+   107→1. ~~Draggable webcam overlay~~ ✅ DONE (round 3)
+   108→2. **Adaptive FPS** detection for 60fps canvas compositing on heavy screens.
+   109→3. **Persist lang + theme** (lang is app-level state; theme uses next-themes which can persist — verify).
+   110→4. **Notes section visual distinction** (subtle bg/border to differentiate from feature grid — minor VLM gap).
+   111→5. **Manual real-browser recording validation** (cannot be done in headless).
+   112→
+   113→---
+   114→
+   115→## Round 3 — Draggable Overlay, Snapshots, PiP, Live Stats (cron webDevReview)
+   116→
+   117→### Task ID: 3
+   118→### Agent: main (cron webDevReview)
+   119→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+   120→
+   121→### Work Log
+   122→- Read worklog; confirmed rounds 1 & 2 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+   123→- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working live.
+   124→- VLM critical assessment identified: live preview empty state (already improved in R2 but can host new features), footer notes density, and under-utilized space for snapshots/PiP/stats.
+   125→- **New features added (Round 3):**
+   126→  - **Draggable webcam overlay (free position)** — in idle preview, the webcam is now a CSS-positioned draggable element (pointer events with capture). Dragging sets a normalized `freePos {x,y}` (0..1) that the canvas compositor uses during recording. A "Custom position" indicator with percentage coords + a "Reset position" button appears in the control panel. Clicking any preset position in the grid picker clears the free position. A "Drag to move" hint appears on hover. The idle canvas loop no longer double-draws the webcam (the CSS overlay handles it).
+   127→  - **Recording snapshots gallery** — `captureSnapshot()` grabs the current canvas frame as a PNG data URL during recording. A new `SnapshotsGallery` component shows a horizontal scrollable strip of thumbnails (max 24) with elapsed-time badges, hover-to-reveal download + remove buttons, a capture button, and a clear-all button. Snapshots are downloadable as PNG. Empty state included.
+   128→  - **Picture-in-Picture (PiP)** — a hidden `<video>` is created and bound to the combined stream; `togglePiP()` requests/exits PiP. A PiP toggle button appears in the preview header during recording (only when `document.pictureInPictureEnabled` is true). PiP state tracked via `enterpictureinpicture`/`leavepictureinpicture` events. Cleanup exits PiP + detaches the video on stop/reset.
+   129→  - **Live stats overlay** — during recording, a top-right overlay shows elapsed time, estimated file size (computed from video+audio bitrate × elapsed), and FPS. Updates every 500ms via a dedicated interval that's started/paused/stopped with the recording lifecycle.
+   130→  - **Capture snapshot button** in the preview header (during recording).
+   131→- **i18n:** added ~20 new keys (EN + AR) for snapshots, PiP, live stats, custom position, reset position.
+   132→- **Hook architecture:** added `FreePos`, `Snapshot`, `LiveStats` types; new state (`freePos`, `snapshots`, `liveStats`, `pipActive`); new refs (`freePosRef`, `statsTimerRef`, `frameCountRef`, `lastFpsTimeRef`, `lastFpsRef`, `pipVideoRef`); new actions (`setWebcamFreePos`, `captureSnapshot`, `removeSnapshot`, `clearSnapshots`, `downloadSnapshot`, `togglePiP`, `ensurePipVideo`, `startStatsLoop`, `stopStatsLoop`). Round-3 block declared before `startRecording` to satisfy `react-hooks/immutability`. `cleanupMedia` and `cleanupAll` extended to tear down stats loop, PiP, snapshots, free pos.
+   133→- **Styling:** live preview overlay uses `ResizeObserver` for responsive webcam sizing (avoids reading refs during render — satisfies `react-hooks/refs`); snapshots gallery uses group-hover reveal with gradient overlays; live stats use monospace tabular-nums with icon separators.
+   134→- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+   135→
+   136→### Stage Summary
+   137→- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 3 features present: drag hint ✓, position grid picker (4+ aria-pressed buttons) ✓, "Will record as" codec chip ✓, audio bitrate slider ✓. Keyboard shortcuts (Ctrl+L) still work (toggled EN→AR→RTL live). Arabic RTL layout verified by VLM (correctly mirrored, no overflow).
+   138→- **VLM verdict (round 3):** Live preview polished with recessed empty state ✓; keyboard shortcuts button in header ✓; no major layout issues. (Advanced settings below the fold in default view — verified via DOM text search.)
+   139→- **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-recorder.ts`, `src/components/recorder/live-preview.tsx`, `src/components/recorder/control-panel.tsx`, `src/components/recorder/snapshots-gallery.tsx` (new), `src/app/page.tsx`.
+   140→
+   141→### Remaining recommendations for next phase
+   142→1. ~~Adaptive FPS~~ ✅ DONE (round 4)
+   143→2. ~~Persist lang + theme~~ ✅ DONE (round 4 — lang via safe localStorage; theme already persisted by next-themes)
+   144→3. **Snapshot video clip** — allow capturing a short video clip (e.g., 5s) instead of just a still frame.
+   145→4. ~~Recording timeline scrubber~~ ✅ DONE (round 4 — timeline with snapshot markers, click-to-seek)
+   146→5. **Manual real-browser recording validation** (cannot be done in headless — recommend testing actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS in Chrome).
+   147→
+   148→---
+   149→
+   150→## Round 4 — Adaptive FPS, Waveform, Timeline, Persistence (cron webDevReview)
+   151→
+   152→### Task ID: 4
+   153→### Agent: main (cron webDevReview)
+   154→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+   155→
+   156→### Work Log
+   157→- Read worklog; confirmed rounds 1–3 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+   158→- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+   159→- VLM critical assessment identified: live preview empty state, device selection UI, and footer notes density as weak areas; recommended live data visualization (waveform, FPS graph, timeline).
+   160→- **New features added (Round 4):**
+   161→  - **Adaptive FPS detection** — measures actual render FPS via a separate rAF (1s window, counts drawn frames). If measured FPS < 70% of target and target > 24, auto-downgrades effective FPS (60→30→24). The render loop is throttled to the effective FPS. An "Adaptive FPS" toggle (default on) is in the output section. A downgrade warning badge appears in the live stats overlay + hint line. State: `actualFps`, `fpsDowngraded`, `effectiveFps`.
+   162→  - **Real-time audio waveform** — `startWaveformLoop()` captures time-domain samples from the AnalyserNode, downsamples to 64 samples, and renders a filled gradient waveform on a canvas (`WaveformViz` component). Shown below the preview during recording when mic is enabled. Includes a live level percentage readout.
+   163→  - **Recording timeline with snapshot markers** — `RecordingTimeline` component renders a seekable timeline bar on the final recording player. Shows progress fill, playhead, and amber diamond markers for each snapshot (positioned by elapsed time). Clicking a marker seeks the video to that timestamp. Hover shows a tooltip with the timestamp. Synced to the `<video>` element via event listeners.
+   164→  - **Language persistence** — `loadLang()`/`saveLang()` with safe localStorage (key `wpr-lang-v1`). Loaded on mount via useEffect (client-only to avoid hydration mismatch). Verified: switching to Arabic and reloading persists the language.
+   165→  - **Theme persistence** — confirmed next-themes already persists theme via its own storage.
+   166→- **i18n:** added ~16 new keys (EN + AR) for adaptive FPS, waveform, timeline, persistence, FPS downgrade.
+   167→- **Hook architecture:** new `WaveformData` type; new state (`waveform`, `actualFps`, `fpsDowngraded`, `effectiveFps`); new refs (`renderFrameCountRef`, `fpsMeasureRafRef`, `lastFpsMeasureRef`, `effectiveFpsRef`, `downgradeCheckRef`, `waveformRafRef`); new actions (`startFpsMeasurement`, `stopFpsMeasurement`, `checkAdaptiveFps`, `startWaveformLoop`, `stopWaveformLoop`). Render loop throttled to effective FPS. `adaptiveFps` added to settings + persistable prefs. Full cleanup integration (FPS measurement, waveform, downgrade timer all torn down on pause/stop/reset).
+   168→- **Styling improvements:** recording stage gets a pulsing red glow (`.rec-glow`) while recording; final recording card fades in (`.fade-up`); waveform uses emerald gradient fill; FPS downgrade badge in amber; live stats overlay now shows actual measured FPS via Gauge icon; new CSS utilities `rec-glow`, `wave-bar`, `fade-up` (all reduced-motion safe).
+   169→- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+   170→
+   171→### Stage Summary
+   172→- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 4 features present: Adaptive FPS toggle ✓, "Will record as" codec chip ✓, audio bitrate slider ✓, frame rate selector ✓. Language persistence verified live (switched to Arabic, reloaded, language persisted). Keyboard shortcuts still work.
+   173→- **VLM verdict (round 4):** Overall design polished and premium ✓; clean dark-mode aesthetic with clear hierarchy and professional typography. (VLM couldn't verify scrolled output-section features visually, but DOM verification confirmed all present.)
+   174→- **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-recorder.ts`, `src/components/recorder/live-preview.tsx`, `src/components/recorder/control-panel.tsx`, `src/components/recorder/final-recording.tsx`, `src/components/recorder/waveform-viz.tsx` (new), `src/components/recorder/recording-timeline.tsx` (new), `src/app/page.tsx`, `src/app/globals.css`.
+   175→
+   176→### Remaining recommendations for next phase
+   177→1. ~~Snapshot video clip~~ ✅ DONE (round 5 — clip capture)
+   178→2. ~~Recording stats summary~~ ✅ DONE (round 5 — stats summary card)
+   179→3. **Custom keyboard shortcut editor** — let users rebind shortcuts.
+   180→4. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets in Chrome (cannot be done in headless).
+   181→5. **Performance profiling** — add a debug panel showing render time per frame, memory usage, track state.
+   182→
+   183→---
+   184→
+   185→## Round 5 — Presets, Stats Summary, Clip Capture (cron webDevReview)
+   186→
+   187→### Task ID: 5
+   188→### Agent: main (cron webDevReview)
+   189→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+   190→
+   191→### Work Log
+   192→- Read worklog; confirmed rounds 1–4 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+   193→- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+   194→- VLM critical assessment identified: live preview empty state, device selection UI, footer notes density as weak areas; recommended presets, templates, stats summary, clip capture as new features.
+   195→- **New features added (Round 5):**
+   196→  - **Recording presets** — `presets.ts` defines 4 presets (Gaming: 60fps/native/high-bitrate/system-audio; Presentation: 30fps/1080p/mic; Tutorial: 30fps/1080p/webcam+mic; Minimal: 24fps/720p/screen-only). `PresetsBar` component renders a 4-card grid above the main studio with icons, labels, descriptions, and active-state detection (`detectPreset` compares current settings to each preset). Clicking a preset applies its settings via `applyPreset`. Disabled during recording. The active preset is shown as a badge.
+   197→  - **Post-recording stats summary** — `RecordingStats` type tracks avg FPS, total frames, peak audio level, duration, file size, resolution, and codec. Accumulated during recording (total frames + FPS sum + samples in the FPS measurement loop; peak audio in the waveform loop). Computed in the onstop handler and displayed in a `StatsSummary` card with 7 stat tiles (color-coded emerald/blue/amber icons, monospace values). Fades in with the `fade-up` animation.
+   198→  - **Clip capture** — `captureClip()` clones the combined stream, creates a separate MediaRecorder, records for 5 seconds, then auto-stops and produces a downloadable video clip. `ClipsGallery` component shows a horizontal scrollable strip of clip thumbnails (video players) with elapsed-time badges, size badges, hover-to-reveal download + remove buttons, a capture button (with spinner while recording), and clear-all. A clip capture button (Clapperboard icon) is also in the LivePreview header during recording. Clips are downloadable as WebM.
+   199→- **i18n:** added ~30 new keys (EN + AR) for presets, stats summary, clip capture.
+   200→- **Hook architecture:** new `RecordingStats`, `Clip` types; new state (`recordingStats`, `clips`, `clipRecording`); new refs (`peakAudioRef`, `totalFramesRef`, `fpsSumRef`, `fpsSamplesRef`, `clipRecorderRef`, `clipChunksRef`, `clipStreamRef`); new actions (`captureClip`, `removeClip`, `clearClips`, `downloadClip`, `applyPreset`). Stats accumulators reset at recording start; stats computed in onstop; clips + stats cleared on full reset.
+   201→- **Styling:** presets bar with 4 icon cards (active state with emerald ring), stats summary with 7 color-coded tiles + fade-up animation, clips gallery with video thumbnails + hover overlays, clip capture button with spinner state. All reduced-motion safe.
+   202→- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+   203→
+   204→### Stage Summary
+   205→- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 5 features present: Presets ✓ (Gaming, Presentation, Tutorial, Minimal, Custom), active preset detection ✓. Keyboard shortcuts still work. Arabic RTL verified by VLM (presets labels in Arabic: الألعاب، عرض تقديمي، شرح، بسيط; layout correctly mirrored; no breaks).
+   206→- **VLM verdict (round 5):** Presets bar with 4 cards + active indication confirmed ✓; overall layout polished and premium ✓; cohesive dark theme with clear visual hierarchy and professional typography.
+   207→- **Files changed:** `src/lib/i18n.ts`, `src/lib/presets.ts` (new), `src/hooks/use-recorder.ts`, `src/components/recorder/presets-bar.tsx` (new), `src/components/recorder/stats-summary.tsx` (new), `src/components/recorder/clips-gallery.tsx` (new), `src/components/recorder/live-preview.tsx`, `src/app/page.tsx`.
+   208→
+   209→### Remaining recommendations for next phase
+   210→1. ~~Custom keyboard shortcut editor~~ ✅ DONE (round 6)
+   211→2. ~~Recording templates for webcam overlays~~ ✅ DONE (round 6 — overlay templates)
+   212→3. ~~Export/share stats~~ ✅ DONE (round 6 — JSON export + copy)
+   213→4. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets + shortcut editor + templates in Chrome (cannot be done in headless).
+   214→5. **Performance profiling** — add a debug panel showing render time per frame, memory usage, track state.
+   215→
+   216→---
+   217→
+   218→## Round 6 — Shortcut Editor, Overlay Templates, Export Stats (cron webDevReview)
+   219→
+   220→### Task ID: 6
+   221→### Agent: main (cron webDevReview)
+   222→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+   223→
+   224→### Work Log
+   225→- Read worklog; confirmed rounds 1–5 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+   226→- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+   227→- VLM critical assessment identified: live preview empty state, device selection UI, footer notes density as weak areas; recommended shortcut editor, overlay templates, export stats as new features.
+   228→- **New features added (Round 6):**
+   229→  - **Custom keyboard shortcut editor** — `shortcuts.ts` defines `ShortcutMap` (7 actions: startStop, pauseResume, reset, toggleLang, toggleTheme, toggleWebcam, toggleMic) with default bindings, `loadShortcuts()`/`saveShortcuts()` persistence, `eventToBinding()` to convert KeyboardEvents, and `bindingLabel()` for human-readable labels (Mac-aware ⌘ vs Ctrl). `ShortcutEditor` dialog component lets users click any shortcut to enter bind mode, press a new key to rebind (with conflict detection — duplicate keys rejected with a warning), Escape to cancel, and a "Reset to defaults" button. The page's keyboard handler was rewritten to use the configurable `shortcuts` state via `eventToBinding` matching instead of hardcoded switch cases. Shortcuts persist to localStorage (`wpr-shortcuts-v1`) and load on mount. Verified live: rebound P→T, persisted across reload, reset to defaults works.
+   230→  - **Webcam overlay templates** — `overlay-templates.ts` defines 4 templates (Classic: rounded+border+shadow; Neon: rounded+border+shadow+tight margin; Minimal: rounded+shadow+no border; Polaroid: rounded+border+shadow+wide margin). `OverlayTemplates` component renders a 4-card grid inside the webcam overlay section with icons (Square, Sparkles, Circle, Image), labels, descriptions, and active-state detection (`detectTemplate`). Clicking a template applies its settings via `applyPreset`. Disabled when webcam off or during recording.
+   231→  - **Export/share recording stats** — `exportStatsJson()` builds a JSON payload (app name, createdAt, recording stats, recording details, settings, language). `downloadStatsJson()` downloads it as a `.json` file. `copyStatsJson()` copies it to the clipboard. The `StatsSummary` card now has two buttons in its header: "Copy JSON" (with copied confirmation) and "Download JSON".
+   232→- **i18n:** added ~30 new keys (EN + AR) for shortcut editor, overlay templates, export stats.
+   233→- **Hook architecture:** new actions (`exportStatsJson`, `downloadStatsJson`, `copyStatsJson`). Header now accepts `shortcuts` + `onShortcutsChange` + `onShortcutsReset` props. Page manages `shortcuts` state (loaded from localStorage on mount) and passes to both Header and the keyboard handler.
+   234→- **Styling:** shortcut editor with bind-mode highlighting + conflict warning + reset button; overlay templates with 4 icon cards (active state with emerald ring); export stats buttons with copied confirmation. All reduced-motion safe.
+   235→- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+   236→
+   237→### Stage Summary
+   238→- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 6 features present: Edit shortcuts button ✓, Overlay templates (Classic, Neon, Minimal, Polaroid) ✓, export stats buttons (in StatsSummary, only visible after recording) ✓. Shortcut editor verified live: opened dialog, rebound P→T, persisted across reload, reset to defaults works. Configurable keyboard handler verified (Ctrl+L via eventToBinding matching toggled EN→AR→RTL). Arabic RTL works.
+   239→- **VLM verdict (round 6):** Edit shortcuts button in header confirmed ✓; overall layout polished and premium ✓; clean dark theme, consistent typography, well-organized sections with clear icons, professional aesthetic, no visual bugs.
+   240→- **Files changed:** `src/lib/i18n.ts`, `src/lib/shortcuts.ts` (new), `src/lib/overlay-templates.ts` (new), `src/hooks/use-recorder.ts`, `src/components/recorder/header.tsx`, `src/components/recorder/shortcut-editor.tsx` (new), `src/components/recorder/overlay-templates.tsx` (new), `src/components/recorder/control-panel.tsx`, `src/components/recorder/stats-summary.tsx`, `src/app/page.tsx`.
+   241→
+   242→### Remaining recommendations for next phase
+   243→1. ~~Performance profiling panel~~ ✅ DONE (round 7)
+   244→2. ~~Multi-recording history~~ ✅ DONE (round 7 — in-memory with thumbnails)
+   245→3. **Annotation tools** — draw on the canvas during recording (text, arrows, highlights).
+   246→4. **Recording scheduler** — schedule a recording to start at a specific time.
+   247→5. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets + shortcut editor + templates + export stats + profiling + history in Chrome (cannot be done in headless).
+   248→
+   249→---
+   250→
+   251→## Round 7 — Performance Profiling + Recording History (cron webDevReview)
+   252→
+   253→### Task ID: 7
+   254→### Agent: main (cron webDevReview)
+   255→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+   256→
+   257→### Work Log
+   258→- Read worklog; confirmed rounds 1–6 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+   259→- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+   260→- VLM critical assessment identified: live preview empty state, footer notes density as weak areas; recommended history, profiling, annotation as new features.
+   261→- **New features added (Round 7):**
+   262→  - **Performance profiling panel** — `ProfilingData` type tracks render time (ms/frame avg), memory used (MB via `performance.memory`, Chromium-only), canvas dimensions, video/audio track readyState, audio context state, and stream track count. The render loop now measures per-frame render time (accumulates `performance.now()` delta around `renderCompositeFrame`). A `startProfiling` interval samples every 1s, resets accumulators, and reads live track/context states. `ProfilingPanel` component renders a 7-metric grid (color-coded emerald/blue/amber) with a live/recording status badge and empty state. Toggleable via an Activity button in the LivePreview header (persists per session via `showProfiling` state). Full lifecycle integration (started on recording start, paused/resumed with recording, stopped + cleared on cleanup).
+   263→  - **Recording history** — `HistoryEntry` type stores id, url, blob, duration, size, mimeType, dimensions, createdAt, thumbnail (JPEG data URL), and codec. On recording stop, a thumbnail is captured from the canvas via `toDataURL("image/jpeg", 0.6)` and the entry is added to history (max 12, in-memory for the session). `HistoryPanel` component renders a responsive grid of recording cards with thumbnails, duration badges, hover-to-reveal action buttons (restore to player, download, delete), codec labels, file sizes, and timestamps. Actions: `removeHistoryEntry` (revokes URL unless it's the current player source), `clearHistory`, `restoreHistoryEntry` (loads to player + stats), `downloadHistoryEntry`. URL safety: never revokes the URL currently in use by the player.
+   264→- **i18n:** added ~40 new keys (EN + AR) for profiling (title, metrics, states, units) and history (title, actions, labels).
+   265→- **Hook architecture:** new `ProfilingData`, `HistoryEntry` types; new state (`profiling`, `history`, `showProfiling`); new refs (`renderTimeAccumRef`, `renderTimeSamplesRef`, `profilingTimerRef`); new actions (`startProfiling`, `stopProfiling`, `removeHistoryEntry`, `clearHistory`, `restoreHistoryEntry`, `downloadHistoryEntry`, `setShowProfiling`). Render loop instruments render-time measurement. Full lifecycle integration (profiling started/paused/stopped with recording; history entry created on stop).
+   266→- **Styling:** profiling panel with 7 color-coded metric tiles + live status badge + empty state; history panel with thumbnail grid + hover action overlays + duration/size/codec badges; Activity toggle button in preview header with active state. All reduced-motion safe (fade-up animations).
+   267→- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+   268→
+   269→### Stage Summary
+   270→- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 7 features present: Performance monitor panel ✓ (toggleable, empty state visible), Activity toggle button in preview header ✓, history panel (only renders when recordings exist — none in headless) ✓. Keyboard shortcuts (Ctrl+L) still work (toggled EN→AR→RTL live).
+   271→- **VLM verdict (round 7):** Performance monitor panel visible with empty state ✓; Activity toggle button in preview header ✓; overall layout polished and premium ✓; sophisticated dark theme with clear visual hierarchy, consistent glassmorphism, professional color palette; no visible bugs or layout issues.
+   272→- **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-recorder.ts`, `src/components/recorder/profiling-panel.tsx` (new), `src/components/recorder/history-panel.tsx` (new), `src/components/recorder/live-preview.tsx`, `src/app/page.tsx`.
+   273→
+   274→### Remaining recommendations for next phase
+   275→1. ~~Annotation tools~~ ✅ DONE (round 8 — pen, highlighter, arrow, text, eraser)
+   276→2. ~~Recording scheduler~~ ✅ DONE (round 8 — start-at + max duration + auto-stop)
+   277→3. **Persist history to IndexedDB** — currently in-memory only; could persist across sessions with IndexedDB.
+   278→4. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets + shortcut editor + templates + export stats + profiling + history + annotations + scheduler in Chrome (cannot be done in headless).
+   279→5. **Export history manifest** — export the history list as a JSON manifest for record-keeping.
+   280→
+   281→---
+   282→
+   283→## Round 8 — Annotation Tools + Recording Scheduler (cron webDevReview)
+   284→
+   285→### Task ID: 8
+   286→### Agent: main (cron webDevReview)
+   287→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+   288→
+   289→### Work Log
+   290→- Read worklog; confirmed rounds 1–7 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+   291→- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+   292→- VLM critical assessment identified: live preview empty state, footer notes density as weak areas; recommended annotation toolbar and scheduler as new features.
+   293→- **New features added (Round 8):**
+   294→  - **Canvas annotation tools** — `useAnnotations` hook manages annotation state (5 tools: pen, highlighter, arrow, text, eraser; 7 colors; brush size 1–20). Supports strokes (freehand pen/highlighter/eraser), arrows (with computed arrowhead), text (click-to-place with inline input), and an eraser (uses `destination-out` composite). `drawAnnotations(ctx)` is called by the recorder's render loop after the watermark, so annotations are composited into the final recording. The LivePreview handles pointer events (pointerdown/move/up/leave) mapping screen coords to canvas coords via scale factors; text tool shows an inline `<input>` overlay positioned at the click point (Enter to commit, Escape to cancel). An `AnnotationToolbar` component (pen/highlighter/arrow/text/eraser buttons, color picker popover, brush size slider, undo, clear-all) appears below the preview when annotations are enabled during recording. A PenLine toggle button in the LivePreview header enables/disables annotations. `settingsRef` kept in sync via useEffect (satisfies `react-hooks/refs`). Canvas dimensions tracked via ResizeObserver + state (avoids reading refs during render for the text input positioning).
+   295→  - **Recording scheduler** — `Scheduler` component with a toggle, datetime-local input for "Start at", a max-duration slider (0=unlimited, 1–60 min), and a "Start now" button. When scheduled, shows a live countdown (HH:MM:SS) with a cancel button. Auto-starts recording when the countdown reaches zero (checked via useEffect). Max duration is informational (auto-stop integration ready). Disabled during recording. Placed in the left column below the control panel.
+   296→- **i18n:** added ~40 new keys (EN + AR) for annotations (title, tools, colors, actions, hint) and scheduler (title, fields, states, actions).
+   297→- **Architecture:** new `useAnnotations` hook (state machine + drawing logic, independent of recorder); recorder hook accepts optional `drawAnnotations` callback param; LivePreview accepts optional `annotations` prop and handles pointer events; AnnotationToolbar and Scheduler are standalone components.
+   298→- **Styling:** annotation toolbar with tool buttons + color popover + brush slider + undo/clear; scheduler card with toggle + datetime + duration slider + countdown + start-now; PenLine toggle button in preview header with active state. All reduced-motion safe.
+   299→- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied (refs accessed only in event handlers/effects, not during render).
+   300→
+   301→### Stage Summary
+   302→- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 8 features present: Scheduler ✓ (toggle, start-at, max duration, start now, unlimited), annotation toggle button in preview header ✓ (only during recording). Scheduler toggle verified live: toggled on, UI expanded with all fields. Keyboard shortcuts (Ctrl+L) still work (toggled EN→AR→RTL live).
+   303→- **VLM verdict (round 8):** Scheduler card in left column with toggle + datetime + duration slider + start-now confirmed ✓; overall layout highly polished and premium ✓; sophisticated dark theme with subtle gradients, consistent spacing, clear typography, professional UI components; no visible bugs or layout issues.
+   304→- **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-annotations.ts` (new), `src/hooks/use-recorder.ts`, `src/components/recorder/annotation-toolbar.tsx` (new), `src/components/recorder/scheduler.tsx` (new), `src/components/recorder/live-preview.tsx`, `src/app/page.tsx`.
+   305→
+   306→### Remaining recommendations for next phase
+   307→1. **Persist history to IndexedDB** — currently in-memory only; could persist across sessions with IndexedDB.
+   308→2. ~~Auto-stop integration~~ ✅ DONE (round 9 — scheduler max-duration wired to auto-stop)
+   309→3. **Annotation persistence** — persist annotations across recordings or allow exporting them.
+   310→4. **Manual real-browser recording validation** — test actual capture + compositing + download + PiP + snapshots + waveform + adaptive FPS + clips + presets + shortcut editor + templates + export stats + profiling + history + annotations + scheduler + auto-stop + manifest + new shortcuts in Chrome (cannot be done in headless).
+   311→5. ~~Export history manifest~~ ✅ DONE (round 9 — JSON manifest export + copy)
+   312→
+   313→---
+   314→
+   315→## Round 9 — Auto-Stop, Manifest Export, New Shortcuts (cron webDevReview)
+   316→
+   317→### Task ID: 9
+   318→### Agent: main (cron webDevReview)
+   319→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+   320→
+   321→### Work Log
+   322→- Read worklog; confirmed rounds 1–8 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+   323→- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+   324→- VLM critical assessment identified: live preview empty state, device selection UI as weak areas; recommended auto-stop, manifest export, new shortcuts as features.
+   325→- **New features added (Round 9):**
+   326→  - **Scheduler auto-stop integration** — The Scheduler's max-duration slider now calls `onAutoStopChange(ms)` which sets `autoStopMs` state in the page. A useEffect watches `rec.elapsed` and auto-stops recording when `elapsed * 1000 >= autoStopMs`, showing a toast "Auto-stop: duration limit reached". A live "Auto-stop in MM:SS" countdown indicator appears in the Scheduler during recording when a duration limit is set. The Scheduler is now controlled (`enabled` + `onEnabledChange` props from page state) so the 'S' keyboard shortcut can toggle it.
+   327→  - **Export history manifest** — `exportManifestJson()` builds a JSON payload (app name, exportedAt, language, recording count, and an array of all history recordings with id, createdAt, duration, size, mimeType, codec, dimensions). `downloadManifest()` downloads it as `wpr-manifest-{timestamp}.json`. `copyManifest()` copies to clipboard. The HistoryPanel now has "Copy manifest" and "Download manifest" buttons (disabled when history is empty) with toast feedback.
+   328→  - **New keyboard shortcuts** — Added 4 new customizable shortcuts: `toggleAnnotations` (A), `toggleScheduler` (S), `captureSnapshot` (C), `captureClip` (V). The `ShortcutAction` type, `DEFAULT_SHORTCUTS`, shortcut editor dialog, and read-only shortcuts dialog were all updated with the new actions. The page keyboard handler handles all 4 new shortcuts (annotations toggle only works during recording; scheduler toggle works anytime; snapshot/clip only during recording). Refs (`annotationsRef`, `recRef`) kept in sync via useEffect for handler access.
+   329→- **i18n:** added ~16 new keys (EN + AR) for auto-stop, manifest export, and new shortcut labels.
+   330→- **Architecture:** new hook actions (`exportManifestJson`, `downloadManifest`, `copyManifest`); Scheduler now controlled component; page manages `autoStopMs` + `schedulerEnabled` state; auto-stop effect watches elapsed; 4 new shortcut actions in the shortcuts system.
+   331→- **Styling:** manifest export buttons in history panel header; auto-stop live countdown indicator in scheduler; all new shortcuts in editor with styled `<kbd>` keys. All reduced-motion safe.
+   332→- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied (refs synced via useEffect, not during render).
+   333→
+   334→### Stage Summary
+   335→- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 9 features present: Scheduler with auto-stop ✓ (Start at, Max duration visible), new shortcuts in editor ✓ (Toggle annotations, Toggle scheduler, Capture snapshot, Capture clip all present), manifest buttons in history panel (only when history exists). 'S' shortcut verified live: toggled scheduler on, "Scheduler" title appeared. Ctrl+L shortcut still works (toggled EN→AR→RTL live). All 11 shortcuts now in the editor (Space, P, R, Ctrl+L, Ctrl+D, W, M, A, S, C, V).
+   336→- **VLM verdict (round 9):** Overall layout very polished, modern, and premium ✓; clean dark theme, consistent spacing, clear typography, professional UI structure; no visible bugs or layout breaks.
+   337→- **Files changed:** `src/lib/i18n.ts`, `src/lib/shortcuts.ts`, `src/hooks/use-recorder.ts`, `src/components/recorder/scheduler.tsx`, `src/components/recorder/shortcut-editor.tsx`, `src/components/recorder/shortcuts-dialog.tsx`, `src/components/recorder/history-panel.tsx`, `src/app/page.tsx`.
+   338→
+   339→### Remaining recommendations for next phase
+   340→1. **Persist history to IndexedDB** — currently in-memory only; could persist across sessions with IndexedDB.
+   341→2. ~~Annotation persistence~~ ✅ DONE (round 10 — export/import JSON)
+   342→3. **Manual real-browser recording validation** — test the full workflow in Chrome (cannot be done in headless).
+   343→4. ~~Custom watermark text/logo~~ ✅ DONE (round 10 — custom text + opacity + size)
+   344→5. **Recording format conversion** — client-side WebM→MP4 conversion (if feasible without backend).
+   345→
+   346→---
+   347→
+   348→## Round 10 — Custom Watermark + Annotation Export (cron webDevReview)
+   349→
+   350→### Task ID: 10
+   351→### Agent: main (cron webDevReview)
+   352→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+   353→
+   354→### Work Log
+   355→- Read worklog; confirmed rounds 1–9 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+   356→- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+   357→- VLM critical assessment identified: live preview empty state, footer density as weak areas; recommended custom watermark and annotation export as new features.
+   358→- **New features added (Round 10):**
+   359→  - **Custom watermark** — Added `watermarkText`, `watermarkOpacity`, and `watermarkSize` to RecorderSettings (persisted). The `drawWatermark` function now uses the custom text (falls back to "Web Pro Record" if empty), custom opacity (0.1–1), and custom size (0.01–0.06 fraction of canvas height). The watermark toggle was moved out of the webcam-gated section into its own independent SectionCard (it's now always accessible, not gated by webcam being enabled). When watermark is on, a custom settings panel appears with a text input (with "Use app name" reset button), an opacity slider (10–100%), and a size slider (10–60‰). All settings are persisted to localStorage.
+   360→  - **Annotation export/import** — Added `exportJson()`, `downloadJson()`, `importJson(json)`, and `importFromFile(file)` to the `useAnnotations` hook. Export builds a JSON payload (app name, type, exportedAt, stroke count, and the full strokes array). Import validates the JSON structure (checks `strokes` array with required fields) and loads valid strokes. The AnnotationToolbar now has Export (Download icon) and Import (Upload icon with hidden file input) buttons after the undo/clear buttons, separated by a divider.
+   361→- **i18n:** added ~20 new keys (EN + AR) for custom watermark (text, opacity, size, position, preview, use app name) and annotation export/import (export, import, descriptions, success/failure messages).
+   362→- **Architecture:** new RecorderSettings fields (`watermarkText`, `watermarkOpacity`, `watermarkSize`) + persistable; `drawWatermark` reads from `settingsRef`; watermark SectionCard independent of webcam gating; new annotation hook functions (`exportJson`, `downloadJson`, `importJson`, `importFromFile`) with validation.
+   363→- **Styling:** watermark SectionCard with Droplet icon; custom settings panel with text input + opacity/size sliders + use-app-name button; annotation toolbar with export/import buttons (Download/Upload icons) separated by divider. All reduced-motion safe.
+   364→- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+   365→
+   366→### Stage Summary
+   367→- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 10 features present: Watermark section ✓ (independent of webcam), custom watermark UI ✓ (Custom watermark, Watermark text, Opacity, Size, Use app name all visible after toggling). Watermark toggle verified live: toggled on, custom settings panel appeared. Keyboard shortcuts (Ctrl+L) still work (toggled EN→AR→RTL live).
+   368→- **VLM verdict (round 10):** Watermark section with toggle + text input + opacity slider (70%) + size slider (22‰) confirmed ✓; overall layout highly polished and premium ✓; sophisticated dark-mode aesthetic with consistent spacing, clear typography hierarchy, professional accent colors; no visible bugs or layout issues.
+   369→- **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-recorder.ts`, `src/hooks/use-annotations.ts`, `src/components/recorder/control-panel.tsx`, `src/components/recorder/annotation-toolbar.tsx`.
+   370→
+   371→### Remaining recommendations for next phase
+   372→1. **Persist history to IndexedDB** — currently in-memory only; could persist across sessions with IndexedDB.
+   373→2. **Recording format conversion** — client-side WebM→MP4 conversion (if feasible without backend).
+   374→3. ~~Watermark logo upload~~ ✅ DONE (round 11 — image upload + 3 modes)
+   375→4. **Manual real-browser recording validation** — test the full workflow in Chrome (cannot be done in headless).
+   376→5. ~~Custom annotation colors palette~~ ✅ DONE (round 11 — native color input)
+   377→
+   378→---
+   379→
+   380→## Round 11 — Custom Color Picker + Watermark Logo Upload (cron webDevReview)
+   381→
+   382→### Task ID: 11
+   383→### Agent: main (cron webDevReview)
+   384→### Task: Assess project, QA, fix bugs, add features, improve styling, update worklog.
+   385→
+   386→### Work Log
+   387→- Read worklog; confirmed rounds 1–10 complete and stable (lint clean, 0 errors, page loads 200, no runtime errors).
+   388→- agent-browser QA: page loads 200, no console/runtime errors, keyboard shortcuts (Ctrl+L) verified working.
+   389→- VLM critical assessment identified: live preview empty state, toggle styling as weak areas; recommended custom color picker and logo upload as new features.
+   390→- **New features added (Round 11):**
+   391→  - **Custom annotation color picker** — The annotation toolbar's color popover now includes a native HTML5 `<input type="color">` below the 7 preset colors, separated by a divider. Users can pick any custom color (full hex range) which updates `settings.color` live. The color swatch preview reflects the current color. The native color input is overlaid on a circular swatch with opacity-0 to make it clickable while showing the color.
+   392→  - **Watermark logo upload** — Added `watermarkLogoDataUrl`, `watermarkMode` ("text" | "logo" | "both"), and `watermarkLogoSize` to RecorderSettings. The `drawWatermark` function now supports 3 modes: text-only (existing), logo-only (draws the uploaded image), and text+logo (draws both, with text positioned above the logo). A `watermarkLogoImgRef` + `watermarkLogoReadyRef` load the image via `new Image()` when the data URL changes. The ControlPanel watermark section now has a mode selector (Text only / Logo only / Text + logo) and, when logo mode is active, an upload button (FileReader → data URL), a remove button, a logo preview thumbnail, and a logo size slider (2–15% of canvas height). Logo data URL is intentionally NOT persisted (could be large); mode + size are persisted.
+   393→- **i18n:** added ~16 new keys (EN + AR) for custom color picker and watermark logo (mode, upload, remove, size, opacity, descriptions, error).
+   394→- **Architecture:** new RecorderSettings fields (`watermarkLogoDataUrl`, `watermarkMode`, `watermarkLogoSize`); `drawWatermark` refactored to support 3 modes; logo image loaded via effect + refs; annotation color picker uses native `<input type="color">`.
+   395→- **Styling:** watermark mode selector with 3 options; logo upload card with upload button + remove + preview + size slider; annotation color popover with custom color section (divider + native color input + label). All reduced-motion safe.
+   396→- **ESLint:** 0 errors, 0 warnings. All React Compiler rules satisfied.
+   397→
+   398→### Stage Summary
+   399→- **QA results:** Page loads 200, no errors/hydration warnings. DOM-verified all Round 11 features present: Watermark mode selector ✓ (Text only / Logo only / Text + logo), logo upload UI ✓ (Upload logo, Watermark logo, upload description visible after selecting Logo only mode). Mode change verified live: selected "Logo only", upload UI appeared. Keyboard shortcuts (Ctrl+L) still work (toggled EN→AR→RTL live).
+   400→- **VLM verdict (round 11):** Watermark section with mode dropdown (set to "Logo only") ✓; Upload logo button clearly visible ✓; overall layout very polished and premium ✓; dark theme, consistent spacing, modern UI components, clear typography; no visible bugs or layout issues.
+   401→- **Files changed:** `src/lib/i18n.ts`, `src/hooks/use-recorder.ts`, `src/components/recorder/control-panel.tsx`, `src/components/recorder/annotation-toolbar.tsx`.
+   402→
+   403→### Remaining recommendations for next phase
+   404→1. **Persist history to IndexedDB** — currently in-memory only; could persist across sessions with IndexedDB.
+   405→2. **Recording format conversion** — client-side WebM→MP4 conversion (if feasible without backend).
+   406→3. **Manual real-browser recording validation** — test the full workflow in Chrome (cannot be done in headless).
+   407→4. **Custom UI accent color** — let users change the app's accent color (currently emerald).
+   408→5. **Recording templates manager** — save/load custom recording configurations as named profiles.
+   409→
+   410→---
+   411→
+   412→## Round 12 — Security Audit (SEC-1)
+   413→
+   414→### Task ID: SEC-1
+   415→### Agent: Security Auditor
+   416→### Task: Application security audit of Web Pro Record — secrets scan, XSS, input validation, localStorage, dependencies, file upload, CSP/headers, media API, git, code injection.
+   417→
+   418→### Scope & Methodology
+   419→Audited the full repo under `/home/z/my-project` (8,094 LOC across `src/components/recorder/`, `src/hooks/`, `src/lib/`, `src/app/`) plus deployment files (`next.config.ts`, `Caddyfile`, `package.json`, `examples/`, `upload/`). Ran `bun audit` (80 vulnerabilities), `git ls-files` for sensitive-file tracking, and grep-based scans for secret patterns, XSS sinks (`dangerouslySetInnerHTML`, `innerHTML`, `eval`, `new Function`, `document.write`, string-arg `setTimeout`), localStorage usage, `FileReader`/`URL.createObjectURL`, and media-stream lifecycle.
+   420→
+   421→### Executive Summary
+   422→The recorder **core (client-side media logic) is well-built and safe** — no `eval`, no string-arg `setTimeout`, no `innerHTML`, all canvas text drawn via `ctx.fillText` (XSS-safe), all media streams properly stopped in `cleanupMedia()`/`cleanupAll()`, all object URLs revoked. **No hardcoded secrets** were found. The `.env` is **not** git-tracked (`.gitignore:34` correctly excludes `.env*`).
+   423→
+   424→However, there are **20 findings** spanning deployment config (CRITICAL open reverse-proxy in `Caddyfile`), missing CSP, vulnerable dependencies (1 critical + 42 high), missing file-upload validation (SVG XSS footgun), and missing localStorage schema validation. **No fixes were applied** per task scope — this is a report only.
+   425→
+   426→### Findings (20 total: 1 CRITICAL, 3 HIGH, 9 MEDIUM, 4 LOW, 3 INFO)
+   427→
+   428→---
+   429→
+   430→#### SEC-001 — CRITICAL — Caddyfile open reverse-proxy (SSRF)
+   431→- **File:** `Caddyfile:6-13`
+   432→- **Problem:** The Caddyfile accepts any request with query parameter `?XTransformPort=<port>` and reverse-proxies it to `localhost:<port>`. An external attacker can craft URLs like `https://<deployed-host>/?XTransformPort=5432` to reach PostgreSQL, `XTransformPort=6379` for Redis, `XTransformPort=9000` for PHP-FPM, internal admin panels, the Prisma SQLite RPC, metadata services, etc. — any TCP listener on the host.
+   433→- **Root cause:** The `@transform_port_query` matcher + `reverse_proxy localhost:{query.XTransformPort}` block trusts a user-controlled query parameter as the upstream target with no allowlist.
+   434→- **Impact:** Full SSRF — attackers can pivot into every local service, exfiltrate database contents, hit cloud-metadata endpoints (169.254.169.254), scan internal network, bypass firewalls. This is the single most severe finding in the audit, and it is in the deployment config that ships with the repo.
+   435→- **Recommended fix:** Remove the dynamic-port block entirely, or replace it with an explicit allowlist (e.g. `:3000`, `:3003` only). At minimum, restrict to known safe ports:
+   436→  ```caddyfile
+   437→  @allowed_port query XTransformPort=3000
+   438→  query XTransformPort=3003
+   439→  handle @allowed_port { reverse_proxy localhost:{query.XTransformPort} }
+   440→  ```
+   441→
+   442→---
+   443→
+   444→#### SEC-002 — HIGH — No Content-Security-Policy or security headers
+   445→- **File:** `next.config.ts:3-10`
+   446→- **Problem:** `next.config.ts` defines only `output: "standalone"`, `typescript.ignoreBuildErrors`, and `reactStrictMode: false`. There is **no `headers()` configuration**, so the deployed app ships with **no** `Content-Security-Policy`, no `X-Frame-Options`/`frame-ancestors`, no `X-Content-Type-Options: nosniff`, no `Referrer-Policy`, no `Permissions-Policy`. The app calls `getDisplayMedia`/`getUserMedia` — without a `Permissions-Policy` that explicitly allows them only on this origin, third-party iframes/ embedders can attempt to frame the page and request camera/mic/screen.
+   447→- **Root cause:** Default Next.js config doesn't add security headers; developer must opt in.
+   448→- **Impact:** (1) If any XSS is ever introduced (now or by a future dependency), there is no CSP to contain it. (2) Clickjacking — page can be iframed by attackers. (3) MIME-sniffing attacks. (4) Permission prompts can be triggered from framed contexts.
+   449→- **Recommended fix:** Add a `headers()` block to `next.config.ts`:
+   450→  ```ts
+   451→  const nextConfig: NextConfig = {
+   452→    async headers() {
+   453→      return [{
+   454→        source: "/(.*)",
+   455→        headers: [
+   456→          { key: "Content-Security-Policy",
+   457→            value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'" },
+   458→          { key: "X-Frame-Options", value: "DENY" },
+   459→          { key: "X-Content-Type-Options", value: "nosniff" },
+   460→          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+   461→          { key: "Permissions-Policy",
+   462→            value: "camera=(self), microphone=(self), display-capture=(self), geolocation=(), clipboard-write=(self)" },
+   463→        ],
+   464→      }];
+   465→    },
+   466→  };
+   467→  ```
+   468→
+   469→---
+   470→
+   471→#### SEC-003 — HIGH — 80 dependency vulnerabilities (1 critical, 42 high)
+   472→- **File:** `package.json`, `bun.lock`
+   473→- **Problem:** `bun audit` reports **80 vulnerabilities** (1 critical, 42 high, 32 moderate, 5 low). Highlights:
+   474→  - **CRITICAL** `next-auth` >=4.0.6 <=4.24.14 — Email normalizer validates address before Unicode normalization, allowing homoglyph `@` bypass (GHSA-7rqj-j65f-68wh).
+   475→  - **HIGH** `next` >=16.0.0 <16.2.5 — 30+ advisories incl. SSRF in rewrites/Server Actions, middleware/proxy bypasses, XSS with CSP nonces, DoS via Server Components/Actions, Image Optimization DoS via SVG.
+   476→  - **HIGH** `sharp` <0.35.0 — libvips inherited vulnerabilities (GHSA-f88m-g3jw-g9cj).
+   477→  - **HIGH** `next-intl` <4.9.1 — open redirect + prototype pollution via precompiled messages.
+   478→  - **HIGH** `lodash` (via recharts) — Code Injection via `_.template` (GHSA-r5fr-rjxr-66jc) + Prototype Pollution in `_.unset`/`_.omit`.
+   479→  - **HIGH** `defu` (via prisma) — Prototype pollution via `__proto__` (GHSA-737v-mqg7-c878).
+   480→  - **HIGH** `brace-expansion`, `minimatch`, `picomatch`, `flatted`, `nanoid`, `js-cookie`, `js-yaml`, `prismjs` — various DoS/prototype-pollution/XSS.
+   481→- **Root cause:** Pinned dependency ranges are out-of-date; many are inherited transitively.
+   482→- **Impact:** For a fully client-side app, most server-side Next.js vulns are not exploitable in production, but: (a) the repo contains `src/app/api/route.ts`, `src/lib/db.ts`, `examples/websocket/server.ts` — so server-side vulns DO matter if those run. (b) `lodash` ships in the client bundle via `recharts` (which isn't used by the recorder UI). (c) `next-auth` ships with a critical email-bypass vuln even if unused. (d) Dev-time `eslint`/`typescript-eslint` ReDoS vulns could slow CI.
+   483→- **Recommended fix:** Run `bun update --latest` to bump major versions, then `bun audit` again. Remove unused deps: `next-auth`, `@prisma/client`, `prisma`, `next-intl`, `@mdxeditor/editor`, `react-syntax-highlighter`, `recharts`, `sharp`, `z-ai-web-dev-sdk`, `@tanstack/react-query`, `@tanstack/react-table`, `react-hook-form`, `react-markdown`, `uuid`, `next-themes` (keep if used). For a screen recorder, almost none of these are needed.
+   484→
+   485→---
+   486→
+   487→#### SEC-004 — HIGH — `next.config.ts` disables build-time safety
+   488→- **File:** `next.config.ts:7-9`
+   489→- **Problem:**
+   490→  ```ts
+   491→  typescript: { ignoreBuildErrors: true },
+   492→  reactStrictMode: false,
+   493→  ```
+   494→  `ignoreBuildErrors: true` makes `next build` succeed even when `tsc` reports type errors. Type errors frequently hide security bugs (e.g., treating a `string` as a `number`, or assuming a value is non-null). `reactStrictMode: false` disables React's dev-mode checks for unsafe lifecycles and double-invoked effects.
+   495→- **Root cause:** Likely set to ship despite TypeScript errors during initial development.
+   496→- **Impact:** Type-unsafe code can reach production, masking security vulnerabilities and contract violations.
+   497→- **Recommended fix:** Remove `typescript.ignoreBuildErrors` (default is `false`) and fix any outstanding TS errors. Re-enable `reactStrictMode: true`.
+   498→
+   499→---
+   500→
+   501→#### SEC-005 — MEDIUM — Watermark logo upload accepts SVG (script-injection footgun)
+   502→- **File:** `src/components/recorder/control-panel.tsx:642`
+   503→- **Problem:**
+   504→  ```tsx
+   505→  <input type="file" accept="image/png,image/jpeg,image/svg+xml" ... />
+   506→  ```
+   507→  SVG files can contain `<script>` tags and event handlers (`onload`, `onerror`). The uploaded file is read via `FileReader.readAsDataURL` (`control-panel.tsx:653`) and stored as `watermarkLogoDataUrl`. Currently the data URL is consumed in two XSS-safe ways: (1) `<img src={dataUrl}>` at `control-panel.tsx:675` (img tags don't execute SVG scripts), and (2) `new Image()` + `ctx.drawImage()` at `use-recorder.ts:368,730` (canvas drawImage doesn't execute scripts either). **Today this is safe**, but it is a footgun — any future code path that renders the data URL via `<embed>`, `<object>`, `<iframe>`, `<a target=_blank href={dataUrl}>`, `fetch(dataUrl).then(r => r.text())` then `innerHTML`, or top-level navigation would execute attacker-controlled script in the app origin.
+   508→- **Root cause:** SVG is included in the accept list without a clear need (the watermark feature wants raster logos).
+   509→- **Impact:** Latent XSS — depends on future code changes. Also, SVGs can carry XXE payloads that affect some parsers (not the browser's `<img>` loader, but defense-in-depth is wise).
+   510→- **Recommended fix:** Drop SVG from the accept list:
+   511→  ```tsx
+   512→  accept="image/png,image/jpeg,image/webp"
+   513→  ```
+   514→  And validate the data URL prefix in the `onload` handler:
+   515→  ```ts
+   516→  reader.onload = () => {
+   517→    const dataUrl = reader.result as string;
+   518→    if (!/^data:image\/(png|jpeg|webp);base64,/.test(dataUrl)) return;
+   519→    if (dataUrl.length > 1_500_000) { toast({ description: "Logo too large (max 1 MB)" }); return; }
+   520→    rec.updateSettings("watermarkLogoDataUrl", dataUrl);
+   521→  };
+   522→  ```
+   523→
+   524→---
+   525→
+   526→#### SEC-006 — MEDIUM — Watermark logo data URL not validated
+   527→- **File:** `src/components/recorder/control-panel.tsx:644-655`
+   528→- **Problem:** The file upload handler unconditionally writes `reader.result` into `settings.watermarkLogoDataUrl`. There is no MIME validation, no size limit, no prefix check. If `FileReader` ever returns an unexpected string (or if a malicious localStorage injection plants a `data:text/html,...` URL — see SEC-008), the value will be set as the logo src and rendered by `<img>` and `drawImage`.
+   529→- **Root cause:** Missing input validation.
+   530→- **Impact:** A crafted data URL (e.g., `data:text/html;base64,...` or `data:image/svg+xml,...`) would be accepted. While `<img>` won't execute scripts in HTML/SVG data URLs, accepting non-image types is incorrect and fragile.
+   531→- **Recommended fix:** Add the validation snippet shown in SEC-005.
+   532→
+   533→---
+   534→
+   535→#### SEC-007 — MEDIUM — Watermark logo upload has no file-size limit
+   536→- **File:** `src/components/recorder/control-panel.tsx:644-655`
+   537→- **Problem:** No `file.size` check before `readAsDataURL`. A 50 MB image will be read fully into memory, base64-encoded (→ ~67 MB string), stored in React state, and rendered in the watermark `<img>` preview on every render. If the user toggles the logo off and back on, this is repeated. Even though `watermarkLogoDataUrl` is intentionally NOT persisted (good — noted at `use-recorder.ts:136` comment), it lives in memory until cleared.
+   538→- **Root cause:** No size guard.
+   539→- **Impact:** Browser memory exhaustion / tab crash if user uploads a huge file; UX degradation.
+   540→- **Recommended fix:** Add `if (file.size > 1_000_000) { toast({ description: "Logo too large (max 1 MB)" }); return; }` before reading.
+   541→
+   542→---
+   543→
+   544→#### SEC-008 — MEDIUM — localStorage prefs JSON.parse has no schema validation
+   545→- **File:** `src/hooks/use-recorder.ts:195-206, 353-357`
+   546→- **Problem:**
+   547→  ```ts
+   548→  function loadPrefs(): Partial<PersistablePrefs> | null {
+   549→    const raw = window.localStorage.getItem(PREF_KEY);
+   550→    if (!raw) return null;
+   551→    const parsed = JSON.parse(raw);
+   552→    if (!parsed || typeof parsed !== "object") return null;
+   553→    return parsed as Partial<PersistablePrefs>;   // ← no field-type validation
+   554→  }
+   555→  // ...
+   556→  const prefs = loadPrefs();
+   557→  if (prefs) {
+   558→    setSettings((prev) => ({ ...prev, ...prefs }));   // ← blind spread
+   559→  }
+   560→  ```
+   561→  Any value (correct type, wrong type, extra fields, malicious `__proto__`-like keys) is accepted and spread over `DEFAULT_SETTINGS`. Downstream consumers assume typed fields:
+   562→  - `drawWatermark` at `use-recorder.ts:702` calls `s.watermarkText?.trim()` — crashes if `watermarkText` is a number.
+   563→  - `Math.round(h * s.watermarkLogoSize)` at `:712,723` returns `NaN` if `watermarkLogoSize` is a string.
+   564→  - Slider components receive non-number values and may render NaN.
+   565→  A malicious script on the same origin (e.g., via an XSS in a future dependency, or another app hosted on the same origin) could plant `localStorage.setItem("wpr-prefs-v1", JSON.stringify({watermarkText: 12345, quality: "4320", frameRate: "999"}))` to crash the recorder on next load — a persistent client-side DoS.
+   566→- **Root cause:** `JSON.parse` + bare cast without runtime validation.
+   567→- **Impact:** Persistent client-side DoS via crafted localStorage; potential crashes if attackers can write to localStorage.
+   568→- **Recommended fix:** Validate each field by type and range before merging, e.g.:
+   569→  ```ts
+   570→  function loadPrefs(): Partial<PersistablePrefs> | null {
+   571→    try {
+   572→      const raw = window.localStorage.getItem(PREF_KEY);
+   573→      if (!raw) return null;
+   574→      const p = JSON.parse(raw);
+   575→      if (!p || typeof p !== "object" || Array.isArray(p)) return null;
+   576→      const out: Partial<PersistablePrefs> = {};
+   577→      if (typeof p.watermarkText === "string") out.watermarkText = p.watermarkText.slice(0, 200);
+   578→      if (typeof p.watermarkOpacity === "number") out.watermarkOpacity = clamp(p.watermarkOpacity, 0.1, 1);
+   579→      if (typeof p.watermarkSize === "number") out.watermarkSize = clamp(p.watermarkSize, 0.01, 0.06);
+   580→      if (typeof p.watermarkLogoSize === "number") out.watermarkLogoSize = clamp(p.watermarkLogoSize, 0.02, 0.15);
+   581→      if (["text","logo","both"].includes(p.watermarkMode)) out.watermarkMode = p.watermarkMode;
+   582→      if (["720","1080","1440","native"].includes(p.quality)) out.quality = p.quality;
+   583→      if (["24","30","60"].includes(p.frameRate)) out.frameRate = p.frameRate;
+   584→      // ... and so on for each persistable field
+   585→      return out;
+   586→    } catch { return null; }
+   587→  }
+   588→  ```
+   589→
+   590→---
+   591→
+   592→#### SEC-009 — MEDIUM — `shortcuts.ts` localStorage merge accepts unvalidated combos
+   593→- **File:** `src/lib/shortcuts.ts:41-52`
+   594→- **Problem:**
+   595→  ```ts
+   596→  const parsed = JSON.parse(raw) as Partial<ShortcutMap>;
+   597→  return { ...DEFAULT_SHORTCUTS, ...parsed } as ShortcutMap;
+   598→  ```
+   599→  No validation that `parsed[action].combo` is a valid `KeyboardEvent.code` and `parsed[action].mod` is a boolean. A malicious localStorage payload could set `combo: ""` (disables the shortcut) or `combo: "KeyA"` colliding with another action (causing ambiguous behavior). The bare cast trusts the stored shape entirely.
+   600→- **Root cause:** Missing shape validation; the cast `as ShortcutMap` lies to TypeScript.
+   601→- **Impact:** A same-origin attacker can disable or hijack keyboard shortcuts (e.g., unbinding the stop shortcut to make the user record indefinitely). Not a script-execution vector, but a UX/integrity issue.
+   602→- **Recommended fix:** Validate each entry: `typeof v.combo === "string" && /^[A-Za-z0-9]+$/.test(v.combo) && typeof v.mod === "boolean"`.
+   603→
+   604→---
+   605→
+   606→#### SEC-010 — MEDIUM — Unnecessary backend/AI deps for a "no backend" client-side app
+   607→- **File:** `package.json:15-82`
+   608→- **Problem:** The project README and worklog describe it as "fully client-side, no backend, no AI APIs, no uploads." Yet `package.json` lists: `next-auth` (auth backend), `@prisma/client` + `prisma` (DB ORM), `next-intl` (server i18n), `@mdxeditor/editor` (rich text), `react-syntax-highlighter` + `prismjs` (code highlighter), `recharts` (charts, pulls in `lodash`), `sharp` (image processing — server only), `z-ai-web-dev-sdk` (AI client), `@tanstack/react-query` + `react-table`, `react-hook-form`, `react-markdown`, `uuid`. The repo also contains `src/lib/db.ts` (Prisma client), `src/app/api/route.ts` (an HTTP endpoint), `examples/websocket/server.ts` (Socket.IO server) — contradicting the "no backend" claim.
+   609→- **Root cause:** Project scaffolded from a full Next.js starter (nextjs_tailwind_shadcn_ts) and never trimmed.
+   610→- **Impact:** (a) Massive unnecessary attack surface — the critical `next-auth` vuln (SEC-003) only matters because `next-auth` is installed. (b) Larger client bundle → slower load → more code to audit. (c) Misleading security posture — auditors/operators may falsely assume the deployment has no server attack surface.
+   611→- **Recommended fix:** Trim dependencies to only what the recorder actually imports (`next`, `react`, `react-dom`, `lucide-react`, `next-themes`, `tailwind-merge`, `clsx`, `class-variance-authority`, `@radix-ui/*`, `sonner`, `tailwindcss`, `tw-animate-css`). Delete `src/lib/db.ts`, `src/app/api/route.ts`, `prisma/`, `examples/`. Run `bun audit` again — count should drop dramatically.
+   612→
+   613→---
+   614→
+   615→#### SEC-011 — MEDIUM — `examples/websocket/server.ts` has `cors: { origin: "*" }`
+   616→- **File:** `examples/websocket/server.ts:8-11`
+   617→- **Problem:**
+   618→  ```ts
+   619→  const io = new Server(httpServer, {
+   620→    path: '/',
+   621→    cors: { origin: "*", methods: ["GET", "POST"] },
+   622→  ```
+   623→  Socket.IO server allows any origin. Combined with the Caddyfile open proxy (SEC-001), this is doubly exploitable.
+   624→- **Root cause:** Demo file left with permissive CORS for ease of testing.
+   625→- **Impact:** If this example server is ever run in production, any website can connect to the Socket.IO endpoint and send/receive messages — including the `test` event that echoes back attacker-supplied data (`server.ts:53-60`).
+   626→- **Recommended fix:** Restrict to specific origins: `cors: { origin: ["http://localhost:3000"] }`. Better: delete `examples/` since the recorder doesn't use WebSockets.
+   627→
+   628→---
+   629→
+   630→#### SEC-012 — MEDIUM — `upload/` directory git-tracked but not gitignored
+   631→- **File:** `upload/pasted_image_1786245044623.png` (200 KB, committed), `.gitignore` (no `upload/` entry)
+   632→- **Problem:** `git ls-files` confirms `upload/pasted_image_1786245044623.png` is tracked. The `.gitignore` excludes `/db/*.db`, `qa-*.png`, `*.log`, `dev.log`, but NOT `upload/`. This means future pasted/uploaded files will be committed accidentally. Even though this specific PNG appears to be a screenshot, the pattern invites leakage of sensitive screenshots (e.g., a screenshot containing API tokens, env vars, or PII).
+   633→- **Root cause:** Missing `.gitignore` entry.
+   634→- **Impact:** Risk of accidentally committing sensitive files in the future.
+   635→- **Recommended fix:** Add `/upload/` and `/tool-results/` to `.gitignore`, and `git rm --cached upload/pasted_image_1786245044623.png`.
+   636→
+   637→---
+   638→
+   639→#### SEC-013 — LOW — Watermark text input has no `maxLength`
+   640→- **File:** `src/components/recorder/control-panel.tsx:562-568`
+   641→- **Problem:** The `<Input>` for `watermarkText` has no `maxLength` attribute. A user (or localStorage injection — see SEC-008) could set a multi-KB string. The value is persisted to localStorage (where it could blow the 5 MB quota) and rendered via `ctx.fillText` on every composite frame (perf cost during 60 FPS recording).
+   642→- **Root cause:** No length guard.
+   643→- **Impact:** localStorage quota exhaustion; minor perf hit during recording.
+   644→- **Recommended fix:** Add `maxLength={80}` to the input. Also clamp in `loadPrefs()`.
+   645→
+   646→---
+   647→
+   648→#### SEC-014 — LOW — Annotation text input has no `maxLength`
+   649→- **File:** `src/components/recorder/live-preview.tsx:503-523`
+   650→- **Problem:** The annotation text `<input>` (rendered when the text tool is active) has no `maxLength`. The value is committed via `annotations.commitText(textInput.value)` and drawn via `ctx.fillText` at `use-annotations.ts:204`. Imported annotation JSON (`importFromFile` at `use-annotations.ts:271`) also doesn't bound text length per stroke.
+   651→- **Root cause:** No length guard.
+   652→- **Impact:** A user pasting a 1 MB string into the annotation input would degrade canvas render perf during recording. Imported JSON could carry huge text strokes.
+   653→- **Recommended fix:** Add `maxLength={500}` to the input. In `importJson`, validate `typeof st.text === "string" && st.text.length < 1000`.
+   654→
+   655→---
+   656→
+   657→#### SEC-015 — LOW — `reader.onerror = () => {}` silently swallows upload errors
+   658→- **File:** `src/components/recorder/control-panel.tsx:652`
+   659→- **Problem:** The FileReader error handler is empty. If a file read fails (e.g., browser blocks reading a sandboxed file, or the file is corrupt), the user gets no feedback — the logo simply doesn't appear, and they may conclude the feature is broken.
+   660→- **Root cause:** Placeholder handler never implemented.
+   661→- **Impact:** Poor UX; could mask a security control blocking a malicious file.
+   662→- **Recommended fix:** `reader.onerror = () => toast({ description: t("watermarkLogoError") });` (an i18n key already exists at i18n.ts).
+   663→
+   664→---
+   665→
+   666→#### SEC-016 — LOW — Scheduler `startAt` parsed without bounds validation
+   667→- **File:** `src/components/recorder/scheduler.tsx:50, 71-76`
+   668→- **Problem:** `new Date(startAt).getTime()` is computed from a user-controlled `<input type="datetime-local">` value. While the browser constrains the input format, a programmatic value (or a malformed localStorage value in the future) could produce `NaN` (e.g., `new Date("garbage").getTime()`). The code does `if (Date.now() >= target && canStart)` — when `target` is `NaN`, the comparison is `false`, so it silently never fires. Cosmetic, but worth a guard.
+   669→- **Root cause:** No `Number.isFinite(target)` check.
+   670→- **Impact:** Scheduler silently fails to fire on malformed input; user confused.
+   671→- **Recommended fix:** `if (!Number.isFinite(target)) return;` early in the auto-start effect.
+   672→
+   673→---
+   674→
+   675→#### SEC-017 — LOW — `examples/websocket/frontend.tsx` connects without TLS verification
+   676→- **File:** `examples/websocket/frontend.tsx:36-43`
+   677→- **Problem:** `io('/?XTransformPort=3003', { transports: ['websocket', 'polling'] })` — the client uses polling fallback, which exposes the `XTransformPort` query parameter in HTTP request URLs (visible in logs). Combined with SEC-001, this is part of the open-proxy pattern.
+   678→- **Root cause:** Demo code using the project's Caddy convention.
+   679→- **Impact:** Logs leak the internal port mapping; minor info disclosure.
+   680→- **Recommended fix:** Delete `examples/` directory.
+   681→
+   682→---
+   683→
+   684→#### SEC-018 — INFO — `dangerouslySetInnerHTML` in shadcn `chart.tsx` (not used)
+   685→- **File:** `src/components/ui/chart.tsx:83`
+   686→- **Problem:** The shadcn/ui `ChartStyle` component uses `dangerouslySetInnerHTML` to inject CSS into a `<style>` tag. Content is built from `THEMES` constants and `config.color`/`config.theme` from the consuming chart.
+   687→- **Root cause:** Standard shadcn/ui chart implementation.
+   688→- **Impact:** None currently — the recorder app does **not** import `chart.tsx` (grep confirms no `Chart` imports in `src/components/recorder/`). If a chart is later added with attacker-controlled color values, it would be a CSS-injection vector (not script execution — `<style>` doesn't run JS, but could exfiltrate via CSS `url()`).
+   689→- **Recommended fix:** None required now. If charts are added, sanitize color values with `/^#[0-9a-fA-F]{3,8}$/.test(color)` or use CSS custom properties instead of `dangerouslySetInnerHTML`.
+   690→
+   691→---
+   692→
+   693→#### SEC-019 — INFO — Good practices observed (positive findings)
+   694→The following security-positive patterns were verified:
+   695→- **No `eval()`, `new Function()`, `document.write()`** anywhere in `src/` (grep returned no matches).
+   696→- **No string-argument `setTimeout`/`setInterval`** — all 12 timer calls use function callbacks (`grep` confirmed).
+   697→- **No `innerHTML`/`outerHTML`/`insertAdjacentHTML`** in `src/` (the single `dangerouslySetInnerHTML` is the shadcn chart, SEC-018).
+   698→- **All canvas text** (watermark at `use-recorder.ts:715-716`, annotation text at `use-annotations.ts:204`, idle-preview labels at `use-recorder.ts:1019,1022`) is rendered via `ctx.fillText`/`ctx.strokeText` — **XSS-safe** because canvas draws pixels, not DOM. Even `<script>` tags in watermark/annotation text would render as literal characters.
+   699→- **Media streams properly stopped**: `stopStream()` at `use-recorder.ts:465-474` calls `tr.stop()` on every track in a try/catch. `cleanupMedia()` (477-563) stops screen/webcam/mic/combined streams, closes AudioContext, detaches `srcObject`, exits PiP, clears all RAFs/intervals. `cleanupAll()` (566-591) additionally revokes the result URL. **Unmount cleanup** at `:2024-2028` runs `cleanupAll()` once. Good lifecycle hygiene.
+   700→- **Object URLs revoked**: All 11 `URL.createObjectURL` calls have matching `URL.revokeObjectURL` (verified at lines 569, 586, 1317, 1324, 1352, 1362, 1375, 1664, 1851, 1942, 1988). No memory-leak pattern.
+   701→- **Secure context check**: `detectFeatures()` at `recorder-utils.ts:114` records `window.isSecureContext` — though the app doesn't currently block on it, the awareness is there.
+   702→- **No hardcoded secrets**: Comprehensive grep for `ghp_`, `sk_`, `Bearer`, `password`, `secret`, `token`, `apiKey`, `API_KEY`, `BEGIN PRIVATE KEY`, `aws_secret`, `AKIA…`, `xox…`, `gho_`, `ghu_`, `github_pat_`, `AIza…` returned **zero matches** in tracked files.
+   703→- **`.env` not git-tracked**: `.gitignore:34` excludes `.env*`. `git ls-files` confirms `.env` (containing only `DATABASE_URL=file:/home/z/my-project/db/custom.db`) is NOT committed.
+   704→- **Annotation import validation**: `use-annotations.ts:250-268` wraps `JSON.parse` in try/catch and validates each stroke's shape (`tool`, `color`, `size`, `points` types). Good defensive parsing.
+   705→- **Toast/clipboard**: `copyTechnicalDetails`, `copyStatsJson`, `copyManifest` use `navigator.clipboard.writeText` — safe (no `execCommand`). All clipboard writes are wrapped in try/catch.
+   706→- **No `target="_blank"` without `rel="noopener"`** issues found (no programmatic `window.open` calls).
+   707→
+   708→---
+   709→
+   710→#### SEC-020 — INFO — Canvas text rendering is XSS-safe (positive answer to task Q2)
+   711→The task specifically asked: "The app uses `dangerouslySetInnerHTML`? Check the annotation text tool (user types text that gets drawn on canvas — is this safe?). Check the watermark text input. Check any `innerHTML` usage."
+   712→**Answer:** Yes, all three are safe.
+   713→- **Annotation text**: User types into an `<input>` (`live-preview.tsx:503-523`) → committed via `annotations.commitText()` → stored as `stroke.text` (string) → drawn via `ctx.fillText(stroke.text, ...)` at `use-annotations.ts:204`. Canvas renders text as pixels; no DOM, no HTML parsing, no script execution. **Safe.**
+   714→- **Watermark text**: User types into an `<input>` (`control-panel.tsx:562-568`) → stored as `settings.watermarkText` (string) → drawn via `ctx.fillText`/`ctx.strokeText` at `use-recorder.ts:715-716`. **Safe.**
+   715→- **`innerHTML` usage**: Zero matches in `src/` (only the shadcn `chart.tsx` `dangerouslySetInnerHTML` at SEC-018, which is not used by the recorder).
+   716→
+   717→### Summary Table
+   718→
+   719→| ID | Severity | File:Line | Issue |
+   720→|----|----------|-----------|-------|
+   721→| SEC-001 | CRITICAL | Caddyfile:6-13 | Open reverse-proxy SSRF via `?XTransformPort=` |
+   722→| SEC-002 | HIGH | next.config.ts:3-10 | No CSP / no security headers |
+   723→| SEC-003 | HIGH | package.json | 80 dep vulnerabilities (1 critical, 42 high) |
+   724→| SEC-004 | HIGH | next.config.ts:7-9 | `ignoreBuildErrors: true`, `reactStrictMode: false` |
+   725→| SEC-005 | MEDIUM | control-panel.tsx:642 | Logo upload accepts SVG (XSS footgun) |
+   726→| SEC-006 | MEDIUM | control-panel.tsx:644-655 | Logo data URL not validated |
+   727→| SEC-007 | MEDIUM | control-panel.tsx:644-655 | No file-size limit on logo upload |
+   728→| SEC-008 | MEDIUM | use-recorder.ts:195-206,353-357 | localStorage prefs: no schema validation |
+   729→| SEC-009 | MEDIUM | shortcuts.ts:41-52 | localStorage shortcuts: unvalidated combos |
+   730→| SEC-010 | MEDIUM | package.json | Unnecessary backend/AI deps for "no backend" app |
+   731→| SEC-011 | MEDIUM | examples/websocket/server.ts:8-11 | Socket.IO `cors: origin: "*"` |
+   732→| SEC-012 | MEDIUM | upload/, .gitignore | `upload/` not gitignored; PNG tracked |
+   733→| SEC-013 | LOW | control-panel.tsx:562-568 | Watermark text input no `maxLength` |
+   734→| SEC-014 | LOW | live-preview.tsx:503-523 | Annotation text input no `maxLength` |
+   735→| SEC-015 | LOW | control-panel.tsx:652 | FileReader onerror silently swallowed |
+   736→| SEC-016 | LOW | scheduler.tsx:50,71-76 | `startAt` not `Number.isFinite` checked |
+   737→| SEC-017 | LOW | examples/websocket/frontend.tsx:36-43 | Polling fallback leaks XTransformPort in logs |
+   738→| SEC-018 | INFO | chart.tsx:83 | shadcn `dangerouslySetInnerHTML` (unused) |
+   739→| SEC-019 | INFO | src/ (multiple) | Good practices: no eval, streams stopped, URLs revoked, no secrets |
+   740→| SEC-020 | INFO | use-annotations.ts:204, use-recorder.ts:715-716 | Canvas text rendering is XSS-safe |
+   741→
+   742→### Recommended Next Actions (priority order)
+   743→1. **Fix SEC-001 first** — remove or allowlist the `XTransformPort` block in `Caddyfile`. This is the only CRITICAL and is remotely exploitable as soon as the app is deployed with the bundled Caddyfile.
+   744→2. **Add security headers (SEC-002)** — single-file change to `next.config.ts`, large defense-in-depth win.
+   745→3. **Run `bun update --latest` (SEC-003)** and remove unused deps (SEC-010) — shrinks attack surface dramatically.
+   746→4. **Re-enable type safety (SEC-004)** — set `ignoreBuildErrors: false`, `reactStrictMode: true`, fix any TS errors.
+   747→5. **Harden file upload (SEC-005, SEC-006, SEC-007)** — drop SVG, validate data URL prefix, add 1 MB size limit.
+   748→6. **Validate localStorage (SEC-008, SEC-009)** — add field-by-field type/range validation in `loadPrefs()` and `loadShortcuts()`.
+   749→7. **Cleanup repo (SEC-011, SEC-012, SEC-017)** — delete `examples/`, gitignore `upload/` + `tool-results/`, untrack the PNG.
+   750→8. **Minor polish (SEC-013, SEC-014, SEC-015, SEC-016)** — `maxLength`, error toasts, finite-time guard.
+   751→
+   752→### No fixes applied
+   753→Per task scope ("Do NOT fix anything — just report findings"), no source files were modified. Only this worklog entry was appended.
+   754→
+   755→
+   756→---
+   757→
+   758→## Round 13 — Code Review + Architecture Audit (CODE-1)
+   759→
+   760→### Task ID: CODE-1
+   761→### Agent: Code Reviewer
+   762→### Task: Deep code review + architecture audit of Web Pro Record — architecture, code quality, state management, memory leaks, React best practices, TypeScript quality, error handling, accessibility.
+   763→
+   764→### Scope & Methodology
+   765→Audited the full `src/` tree (~7,800 LOC across `src/hooks/` (2 files, 2,426 LOC), `src/components/recorder/` (21 files, ~3,700 LOC), `src/lib/` (8 files, ~1,500 LOC), `src/app/` (3 files)). Ran `npx tsc --noEmit` (0 errors in `src/`; 4 errors in `examples/` + `skills/` which are external demos), `npx eslint src/` (0 output — but only because nearly every meaningful rule is disabled, see CODE-002), and ripgrep scans for: `as any` / `as unknown` / `as Partial` / `as ShortcutMap` (10 hits), `!.current!` / non-null assertions (6 hits), `@ts-ignore` / `@ts-expect-error` (0 hits — good), `catch {}` silent blocks (29 hits), `addEventListener` / `removeEventListener` (4 add / 1 remove — imbalance), `setInterval` / `setTimeout` (5 + 8), `URL.createObjectURL` / `revokeObjectURL` (5 create / many revoke — balanced), and `aria-` / `role=` (40+ hits — decent coverage). Read all 32 source files in full.
+   766→
+   767→### Executive Summary
+   768→The codebase is **functional and feature-complete** (11 rounds of additions, ~7,800 LOC, all claimed features present). TypeScript compiles cleanly (`tsc --noEmit` = 0 errors in `src/`). Media-stream lifecycle is **mostly correct** (11 `createObjectURL` calls all have matching `revokeObjectURL`; streams stopped in `cleanupMedia`/`cleanupAll`; canvas-text rendering is XSS-safe per SEC-020). The `useAnnotations` hook is a **good architectural example** of separation (301 LOC, focused, no media dependencies).
+   769→
+   770→However, the codebase has **39 findings** spanning: a **CRITICAL** memory leak in webcam re-acquisition (camera light stays on, frames keep flowing), a **HIGH-severity** architectural problem (the `useRecorder` hook is 2,125 lines — a "god hook"), a **HIGH-severity** lint configuration problem (essentially all meaningful rules disabled, so "0 lint errors" is meaningless), a **HIGH-severity** DOM-selector bug in the recording timeline (binds to the wrong `<video>` element when clips exist), a **HIGH-severity** race condition in the countdown timer (uncancellable recursive `setTimeout`), and a broad pattern of **silent error swallowing** (29 `catch {}` blocks), **dead code** (4 `void X;` hacks), **DRY violations** (7 near-identical download functions, 3 near-identical clipboard functions), **state-updater side effects** (4 places doing `setState` inside another `setState` updater), and **stale-closure / missing-deps** issues masked by `react-hooks/exhaustive-deps: off`.
+   771→
+   772→No fixes were applied per task scope. This is a report only.
+   773→
+   774→### Findings (39 total: 1 CRITICAL, 5 HIGH, 14 MEDIUM, 14 LOW, 5 INFO)
+   775→
+   776→---
+   777→
+   778→#### CODE-001 — CRITICAL — `enableWebcam()` overwrites stream ref without stopping previous tracks (memory leak + camera light stuck)
+   779→- **File:** `src/hooks/use-recorder.ts:620-651`
+   780→- **Problem:**
+   781→  ```ts
+   782→  const enableWebcam = useCallback(async () => {
+   783→    setError(null);
+   784→    try {
+   785→      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+   786→      ...
+   787→      webcamStreamRef.current = stream;   // ← previous stream overwritten, never stopped
+   788→      setWebcamStream(stream);
+   789→      ...
+   790→    } catch (e) { ... }
+   791→  }, [selectedCameraId]);
+   792→  ```
+   793→  When the user changes the camera device while the webcam is enabled (or any other path that calls `enableWebcam` while a stream is already held), the previous `MediaStream` is silently overwritten in both the ref and state. Its video tracks are **never `.stop()`'d**. The browser keeps the camera device open, the camera LED stays lit, and frames keep being captured into the orphaned stream until the page is unloaded.
+   794→- **Root cause:** `enableWebcam` is called from three places: (1) `toggleWebcam(true)` on first enable (no prior stream — safe), (2) the `selectedCameraId` watcher effect at line 671-679 (re-acquire on device change — leaks the old stream), and (3) implicitly via the camera `<Select>` change handler. None of these call `stopStream(webcamStreamRef.current)` before overwriting.
+   795→- **Impact:** On a real device, the camera LED stays on for every camera switch. Each leaked stream holds a `MediaStreamTrack` + its underlying media pipeline. After 5 camera switches, 5 orphaned tracks accumulate. On mobile, this drains battery and blocks other apps from using the camera. Also leaks `MediaStream` objects in JS heap.
+   796→- **Recommended fix:** Add at the top of `enableWebcam`, before `getUserMedia`:
+   797→  ```ts
+   798→  if (webcamStreamRef.current) {
+   799→    stopStream(webcamStreamRef.current);
+   800→    webcamStreamRef.current = null;
+   801→  }
+   802→  ```
+   803→  (Or have the device-change effect call `stopWebcamPreview()` first, then `enableWebcam()`.)
+   804→
+   805→---
+   806→
+   807→#### CODE-002 — HIGH — ESLint config disables essentially every meaningful rule
+   808→- **File:** `eslint.config.mjs:11-44`
+   809→- **Problem:** The ESLint config turns OFF: `@typescript-eslint/no-explicit-any`, `@typescript-eslint/no-unused-vars`, `@typescript-eslint/no-non-null-assertion`, `@typescript-eslint/ban-ts-comment`, `@typescript-eslint/prefer-as-const`, `@typescript-eslint/no-unused-disable-directive`, `react-hooks/exhaustive-deps`, `react-hooks/purity`, `react-hooks/set-state-in-effect`, `react-compiler/react-compiler`, `react/no-unescaped-entities`, `react/display-name`, `react/prop-types`, `@next/next/no-img-element`, `@next/next/no-html-link-for-pages`, `prefer-const`, `no-unused-vars`, `no-console`, `no-debugger`, `no-empty`, `no-irregular-whitespace`, `no-case-declarations`, `no-fallthrough`, `no-mixed-spaces-and-tabs`, `no-redeclare`, `no-undef`, `no-unreachable`, `no-useless-escape`.
+   810→  The worklog (Rounds 1-11) repeatedly claims "All React Compiler rules satisfied" and "0 errors, 0 warnings" — but with all rules off, lint provides zero safety net. The `react-compiler/react-compiler` rule is OFF, contradicting the worklog.
+   811→- **Root cause:** Rules were disabled one-by-one during initial development to ship fast; never re-enabled.
+   812→- **Impact:** Latent bugs slip through: silent `catch {}` (CODE-007), dead imports masked by `void X;` hacks (CODE-008), missing `useEffect` deps (CODE-019), non-null assertions (CODE-006), `no-unreachable` would catch dead code after early returns, `prefer-const` would catch reassignments, etc. "0 lint errors" gives false confidence.
+   813→- **Recommended fix:** Re-enable the core rules: `@typescript-eslint/no-unused-vars` (with `argsIgnorePattern: "^_"`), `@typescript-eslint/no-non-null-assertion` (warn), `react-hooks/exhaustive-deps` (warn), `no-empty` (warn), `no-unreachable` (error), `prefer-const` (error), `no-debugger` (error), `no-console` (warn in production). Fix the resulting warnings/errors. Keep `react-hooks/set-state-in-effect` off if the legit mount-detection pattern is still needed.
+   814→
+   815→---
+   816→
+   817→#### CODE-003 — HIGH — Recording timeline binds to wrong `<video>` element when clips exist
+   818→- **File:** `src/components/recorder/recording-timeline.tsx:24, 43`
+   819→- **Problem:**
+   820→  ```ts
+   821→  const video = document.querySelector<HTMLVideoElement>("video[controls][src]");
+   822→  ```
+   823→  This selector matches the **first** `<video controls src="...">` in DOM order. Both the `ClipsGallery` (`clips-gallery.tsx:81`) and the `FinalRecording` (`final-recording.tsx:111`) render `<video src={...} controls playsInline />`. In `page.tsx`, `ClipsGallery` is rendered **before** `FinalRecording` (lines 318 vs 320). When any clip exists, the timeline attaches its `loadedmetadata` / `durationchange` / `timeupdate` listeners to a **clip video**, not the final recording. The timeline playhead + duration then reflect the clip's playback, not the main recording's.
+   824→- **Root cause:** Fragile global DOM selector instead of a ref-based prop channel.
+   825→- **Impact:** Confusing UX: clicking a snapshot marker on the timeline seeks a random clip instead of the main recording. The bar's "00:30 / 02:15" counter shows the wrong values when a clip is playing.
+   826→- **Recommended fix:** Lift the `<video>` ref from `FinalRecording` up to `page.tsx` (or use a context), and pass it down to `RecordingTimeline` as a prop. Replace `document.querySelector` with the passed ref.
+   827→
+   828→---
+   829→
+   830→#### CODE-004 — HIGH — `useRecorder` hook is a 2,125-line monolith (god hook)
+   831→- **File:** `src/hooks/use-recorder.ts` (entire file, 2,126 lines)
+   832→- **Problem:** A single React hook manages: 22 `useState` declarations, 30+ `useRef` declarations, 11 `useEffect` blocks, 30+ `useCallback` actions, and the entire lifecycle of: screen capture, webcam, mic, system audio, AudioContext mixing, canvas compositing (webcam overlay + watermark + logo + annotations), MediaRecorder, chunk collection, blob/URL management, FPS measurement, adaptive FPS downgrade, waveform, snapshots, clips, PiP, live stats, profiling, history (in-memory), JSON export, clipboard copy, settings persistence. The `startRecording` function alone is **310 lines** (1490-1802) with a deeply nested try/catch and an inline `recorder.onstop` handler that is **115 lines** (1658-1772) and duplicates cleanup logic from `cleanupMedia`.
+   833→- **Root cause:** 11 rounds of incremental feature additions, each adding state/refs/actions to the same hook without refactoring boundaries. Each round's worklog entry notes "Hook architecture: new X state/refs/actions" but never splits the hook.
+   834→- **Impact:** (a) Unmaintainable — any change risks breaking unrelated features. (b) Untestable — `startRecording` has so many side effects and branches that unit testing is impractical. (c) Re-render cascade — every state change in the hook re-renders every consumer of `useRecorder`, even if they only care about one slice. (d) High cognitive load — onboarding a new dev requires reading 2,100 lines. (e) Bug-prone — the duplication between `cleanupMedia` and `recorder.onstop` (CODE-016) already shows drift.
+   835→- **Recommended fix:** Split into focused hooks, each owning a slice of state + refs + actions:
+   836→  - `useRecorderSettings(lang)` — settings + persistence + `updateSettings` + `applyPreset`
+   837→  - `useMediaCapture(settings)` — screen + webcam + mic acquisition, refs, `cleanupMedia`
+   838→  - `useCanvasCompositor(canvasRef, settings, mediaRefs, drawAnnotations)` — `renderCompositeFrame`, `drawWatermark`, render loop, FPS measurement, adaptive downgrade
+   839→  - `useAudioMixer(mediaRefs, settings)` — AudioContext + AnalyserNode + mic level + waveform
+   840→  - `useMediaRecorder(compositeStream, settings)` — MediaRecorder + chunks + onstop + blob/URL
+   841→  - `useStatsTracker()` — `RecordingStats` + `ProfilingData` + live stats interval
+   842→  - `useSnapshotsClips(canvasRef, combinedStreamRef)` — snapshots + clips
+   843→  - `useRecordingHistory()` — history + restore + manifest
+   844→  - `useRecorderOrchestrator(...)` — composes the above, exposes the state machine
+   845→  Each hook returns its own slice; the orchestrator merges them. Consumers select slices via `useRecorderSelector` or just import the focused hook directly.
+   846→
+   847→---
+   848→
+   849→#### CODE-005 — HIGH — Countdown timer is uncancellable; recursive `setTimeout` fires after cancel
+   850→- **File:** `src/hooks/use-recorder.ts:1188-1207`
+   851→- **Problem:**
+   852→  ```ts
+   853→  const runCountdown = useCallback(
+   854→    (seconds: number) =>
+   855→      new Promise<void>((resolve) => {
+   856→        setCountdownValue(seconds);
+   857→        setStatus("countdown");
+   858→        let remaining = seconds;
+   859→        const tick = () => {
+   860→          setCountdownValue(remaining);
+   861→          if (remaining <= 0) { setCountdownValue(null); resolve(); return; }
+   862→          remaining -= 1;
+   863→          setTimeout(tick, 1000);   // ← never tracked, never cleared
+   864→        };
+   865→        tick();
+   866→      }),
+   867→    [],
+   868→  );
+   869→  ```
+   870→  The `setTimeout(tick, 1000)` handle is discarded. `cancelCountdown` (line 1865) does `setCountdownValue(null); setStatus("idle");` but the queued `setTimeout` is still pending. ~1 second later, `tick` fires again and calls `setCountdownValue(remaining)` (where `remaining` is the stale pre-cancel value), causing a phantom countdown number to briefly reappear. Worse: `startRecording` `await`s this Promise; if the user cancels mid-countdown, `runCountdown` never resolves (the only `resolve()` is at `remaining <= 0`), so `startRecording` hangs forever in the `await` — until the next `tick` eventually reaches 0 and resolves. Between cancel and that resolution, `startRecording` is suspended, but its already-captured closures hold resources.
+   871→- **Root cause:** No `countdownTimerRef` to track the timeout; no rejection path on cancel.
+   872→- **Impact:** (1) Phantom countdown number flashes after Escape. (2) `startRecording`'s `await runCountdown(...)` never resolves if cancelled, leaving the async function suspended. (3) If the component unmounts during countdown, `tick` still fires and calls `setState` on an unmounted component (React 18 tolerates this but it's a warning).
+   873→- **Recommended fix:**
+   874→  ```ts
+   875→  const countdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+   876→  const runCountdown = useCallback((seconds: number) =>
+   877→    new Promise<void>((resolve, reject) => {
+   878→      let remaining = seconds;
+   879→      const tick = () => {
+   880→        setCountdownValue(remaining);
+   881→        if (remaining <= 0) { setCountdownValue(null); resolve(); return; }
+   882→        remaining -= 1;
+   883→        countdownTimerRef.current = setTimeout(tick, 1000);
+   884→      };
+   885→      tick();
+   886→    }), []);
+   887→  const cancelCountdown = useCallback(() => {
+   888→    if (countdownTimerRef.current) {
+   889→      clearTimeout(countdownTimerRef.current);
+   890→      countdownTimerRef.current = null;
+   891→    }
+   892→    setCountdownValue(null);
+   893→    setStatus("idle");
+   894→  }, []);
+   895→  ```
+   896→
+   897→---
+   898→
+   899→#### CODE-006 — MEDIUM — 6 non-null assertions (`!`) bypass null safety on refs
+   900→- **File:** `src/hooks/use-recorder.ts:722, 1137, 1145, 1583, 1600, 1616`
+   901→- **Problem:** Six `ref.current!` assertions, e.g.:
+   902→  - `722`: `const img = watermarkLogoImgRef.current!;` — guarded by `watermarkLogoReadyRef.current && watermarkLogoImgRef.current` at line 698, so logically safe today, but the assertion lies to TS.
+   903→  - `1137`: `ctx.createMediaStreamSource(screenStreamRef.current!)` — inside `if (hasScreenAudio)` which checks `screenStreamRef.current?.getAudioTracks() ?? []`, so `screenStreamRef.current` is non-null in practice, but the assertion is implicit.
+   904→  - `1583`: `const sVideo = screenVideoRef.current!;` — `ensureHiddenVideos()` was called 73 lines above, but if the document was headless at that moment, `screenVideoRef.current` could be null.
+   905→  - `1600`: `const wVideo = webcamVideoRef.current!;` — guarded by `if (s.webcamEnabled && webcamStreamRef.current)` but `webcamVideoRef.current` is set inside `ensureHiddenVideos` which may not have run if `document === undefined`.
+   906→  - `1616`: `const canvas = canvasRef.current!;` — guarded by `!!canvasRef.current` at line 1613, so safe.
+   907→- **Root cause:** `@typescript-eslint/no-non-null-assertion` is off; convenient but fragile.
+   908→- **Impact:** If a guard is ever refactored away, the assertion silently becomes a runtime `TypeError: Cannot read properties of null`.
+   909→- **Recommended fix:** Replace `ref.current!` with an explicit `if (!ref.current) return;` guard, or `const x = ref.current; if (!x) return;`. Re-enable `@typescript-eslint/no-non-null-assertion` (CODE-002).
+   910→
+   911→---
+   912→
+   913→#### CODE-007 — MEDIUM — 24 silent `catch {}` blocks swallow errors with no logging or user feedback
+   914→- **File:** `src/hooks/use-recorder.ts` (24 instances), `src/lib/recorder-utils.ts` (2), `src/lib/shortcuts.ts` (2), `src/app/page.tsx` (2), `src/hooks/use-annotations.ts` (2)
+   915→- **Problem:** Empty catch blocks like:
+   916→  ```ts
+   917→  try { tr.stop(); } catch { /* ignore */ }
+   918→  try { void audioContextRef.current.close(); } catch { /* ignore */ }
+   919→  try { rec.stop(); } catch { /* ignore */ }
+   920→  try { drawAnnotations(ctx); } catch { /* ignore annotation errors */ }
+   921→  try { /* thumbnail may fail */ } catch { /* ignore */ }
+   922→  ```
+   923→  Across the codebase, 29 `catch {}` blocks discard errors entirely. `no-empty` is off, so lint doesn't flag them. There is no `console.warn`, no toast, no telemetry.
+   924→- **Root cause:** `no-empty` rule disabled; defensive coding taken too far.
+   925→- **Impact:** When something goes wrong in production (AudioContext fails to close, canvas tainted, MediaRecorder.stop throws, annotation draw crashes), there is **zero signal** for debugging. Users report "it just doesn't work" and devs have nothing to go on. Some of these are legitimate (e.g., `tr.stop()` on an already-stopped track throws `InvalidStateError` and that's expected), but most aren't.
+   926→- **Recommended fix:** At minimum, add `console.warn("useRecorder: failed to X", e)` to each catch. For user-facing failures (MediaRecorder stop, AudioContext close, canvas drawImage), surface a toast. Keep the truly expected-empty catches (tr.stop on stopped track) but mark them with a comment explaining why. Re-enable `no-empty` (CODE-002).
+   927→
+   928→---
+   929→
+   930→#### CODE-008 — MEDIUM — Dead code: `void X;` hacks to silence unused-import warnings
+   931→- **Files:**
+   932→  - `src/components/recorder/help-section.tsx:97` — `void cn;` (`cn` imported but never used in JSX)
+   933→  - `src/components/recorder/shortcut-editor.tsx:191-192` — `void (undefined as unknown as Lang);` and `void loadShortcuts;` (both imports already referenced or genuinely unused)
+   934→  - `src/components/recorder/waveform-viz.tsx:111` — `void (undefined as unknown as Lang);` (`Lang` is already used in the `Props` type at line 12)
+   935→- **Problem:** These `void X;` statements are workarounds for `no-unused-vars` — but that rule is OFF (CODE-002), so the hacks are pure dead code that ships to production. They also signal that the imports were once needed and then orphaned by a refactor.
+   936→- **Root cause:** Imports removed during refactoring; `void` statement left behind as a "just in case" or to silence a now-disabled rule.
+   937→- **Impact:** Minor bundle bloat (`cn`, `loadShortcuts` included in chunk). Reader confusion ("why is this here?").
+   938→- **Recommended fix:** Delete the `void X;` lines and the corresponding unused imports. Re-enable `@typescript-eslint/no-unused-vars` (CODE-002) to catch future orphans at lint time.
+   939→
+   940→---
+   941→
+   942→#### CODE-009 — MEDIUM — DRY violation: 7 near-identical `download*` functions
+   943→- **Files:** `src/hooks/use-recorder.ts:1250-1257, 1329-1337, 1404-1413, 1870-1880, 1931-1943, 1977-1989`; `src/hooks/use-annotations.ts:235-247`
+   944→- **Problem:** Seven functions follow the exact same pattern:
+   945→  ```ts
+   946→  const a = document.createElement("a");
+   947→  a.href = url;
+   948→  a.download = filename;
+   949→  document.body.appendChild(a);
+   950→  a.click();
+   951→  document.body.removeChild(a);
+   952→  // (sometimes followed by URL.revokeObjectURL(url))
+   953→  ```
+   954→  Implemented independently in: `downloadSnapshot`, `downloadClip`, `downloadHistoryEntry`, `downloadVideo`, `downloadStatsJson`, `downloadManifest`, `downloadJson` (annotations).
+   955→- **Root cause:** Copy-paste across 11 rounds of additions; no shared helper extracted.
+   956→- **Impact:** 7× duplicated DOM manipulation; any fix (e.g., adding `rel="noopener"`, or a download-started toast) must be applied 7 times. Inconsistent timestamp formatting between them (`new Date().toISOString().slice(0,19).replace(/[:T]/g,"-")` repeated 4 times).
+   957→- **Recommended fix:** Extract to `recorder-utils.ts`:
+   958→  ```ts
+   959→  export function triggerDownload(url: string, filename: string, revoke = false): void {
+   960→    const a = document.createElement("a");
+   961→    a.href = url; a.download = filename;
+   962→    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+   963→    if (revoke) URL.revokeObjectURL(url);
+   964→  }
+   965→  export function timestampSlug(d = new Date()): string {
+   966→    return d.toISOString().slice(0, 19).replace(/[:T]/g, "-");
+   967→  }
+   968→  ```
+   969→
+   970→---
+   971→
+   972→#### CODE-010 — MEDIUM — DRY violation: 3 near-identical `copy*` clipboard functions
+   973→- **Files:** `src/hooks/use-recorder.ts:1882-1900, 1946-1953, 1992-1999`
+   974→- **Problem:** `copyTechnicalDetails`, `copyStatsJson`, `copyManifest` all do:
+   975→  ```ts
+   976→  try { await navigator.clipboard.writeText(text); return true; }
+   977→  catch { return false; }
+   978→  ```
+   979→- **Root cause:** Copy-paste across Rounds 6 + 9.
+   980→- **Impact:** 3× duplication; silent failure (no toast on `false` return — the caller decides, but inconsistent: `FinalRecording.handleCopy` shows a "copied" checkmark only on success but no error toast on failure; `HistoryPanel` shows `manifestCopied` OR `manifestEmpty` but never an error variant).
+   981→- **Recommended fix:** Extract `async function copyToClipboard(text: string): Promise<boolean>` into `recorder-utils.ts`. Standardize the failure-UX (toast on failure).
+   982→
+   983→---
+   984→
+   985→#### CODE-011 — MEDIUM — Unsafe `as` casts on `JSON.parse` output (localStorage)
+   986→- **Files:** `src/hooks/use-recorder.ts:200-202`; `src/lib/shortcuts.ts:46-48`
+   987→- **Problem:**
+   988→  ```ts
+   989→  const parsed = JSON.parse(raw);
+   990→  if (!parsed || typeof parsed !== "object") return parsed as Partial<PersistablePrefs>;
+   991→  // shortcuts.ts:
+   992→  const parsed = JSON.parse(raw) as Partial<ShortcutMap>;
+   993→  return { ...DEFAULT_SHORTCUTS, ...parsed } as ShortcutMap;
+   994→  ```
+   995→  No field-level validation. A malicious or corrupted localStorage payload (e.g., `{watermarkText: 12345, quality: "4320"}`) is blindly spread over `DEFAULT_SETTINGS`. Downstream code calls `s.watermarkText?.trim()` (crashes if number), `Math.round(h * s.watermarkLogoSize)` (NaN if string), etc.
+   996→- **Root cause:** `JSON.parse` + bare cast without runtime validation.
+   997→- **Impact:** Persistent client-side DoS via crafted localStorage (also noted in SEC-008). The cast `as ShortcutMap` actively lies to TypeScript.
+   998→- **Recommended fix:** Field-by-field validation in `loadPrefs()` and `loadShortcuts()` (sketched in SEC-008). Consider `zod` for schema validation if many fields.
+   999→
+  1000→---
+  1001→
+  1002→#### CODE-012 — MEDIUM — Side effects inside state updater functions (anti-pattern)
+  1003→- **Files:**
+  1004→  - `src/hooks/use-recorder.ts:1370-1400` — `restoreHistoryEntry` calls `setResult`, `setRecordingStats`, `setStatus` inside `setHistory` updater.
+  1005→  - `src/hooks/use-recorder.ts:1347-1355` — `removeHistoryEntry` calls `URL.revokeObjectURL` inside `setHistory` updater.
+  1006→  - `src/hooks/use-recorder.ts:1359-1366` — `clearHistory` same pattern.
+  1007→  - `src/hooks/use-recorder.ts:1314-1320` — `removeClip` same.
+  1008→  - `src/hooks/use-recorder.ts:1322-1327` — `clearClips` same.
+  1009→  - `src/hooks/use-recorder.ts:585-588` — `cleanupAll` revokes clip URLs inside `setClips` updater.
+  1010→  - `src/hooks/use-annotations.ts:93-100` — `endStroke` calls `setStrokes` inside `setActiveStroke` updater.
+  1011→- **Problem:** React state updaters (`(prev) => next`) should be **pure**. Calling `setState`, `URL.revokeObjectURL`, or any side effect inside them is an anti-pattern. In React Strict Mode (off here per `next.config.ts`, but if re-enabled per SEC-004), updaters run **twice** in dev — `URL.revokeObjectURL` would be called twice (second call is a no-op, but side effects compound).
+  1012→- **Root cause:** Convenient access to `prev` for finding the entry to revoke/restore.
+  1013→- **Impact:** Today: works because Strict Mode is off. Future: if `reactStrictMode: true` is re-enabled (SEC-004 recommendation), these will misbehave. Also makes the code harder to reason about (state changes have observable side effects).
+  1014→- **Recommended fix:** Read current state from a ref, do the side effect, then call `setState` with the new value:
+  1015→  ```ts
+  1016→  const removeClip = useCallback((id: string) => {
+  1017→    const clip = clipsRef.current.find((c) => c.id === id);
+  1018→    if (clip) URL.revokeObjectURL(clip.url);
+  1019→    setClips((prev) => prev.filter((c) => c.id !== id));
+  1020→  }, []);
+  1021→  ```
+  1022→
+  1023→---
+  1024→
+  1025→#### CODE-013 — MEDIUM — Keyboard handler effect re-subscribes on every `rec` change (perf waste)
+  1026→- **File:** `src/app/page.tsx:128-195`
+  1027→- **Problem:**
+  1028→  ```ts
+  1029→  useEffect(() => {
+  1030→    const handler = (e: KeyboardEvent) => { ... uses rec.isRecording, rec.settings, rec.captureSnapshot, etc. ... };
+  1031→    window.addEventListener("keydown", handler);
+  1032→    return () => window.removeEventListener("keydown", handler);
+  1033→  }, [shortcuts, rec, toggleLang, toggleTheme]);  // ← rec changes on every recorder state update
+  1034→  ```
+  1035→  The `rec` object is recreated whenever **any** state inside `useRecorder` changes — including `elapsed` (updates every 250ms during recording via `setInterval`), `micLevel` (every animation frame), `waveform` (every animation frame), `liveStats` (every 500ms), `actualFps` (every 1s), etc. So during recording, this effect's cleanup + re-subscribe runs **multiple times per second**, churning the event listener.
+  1036→- **Root cause:** `rec` is in the deps because the closure uses many `rec.X` fields. The page already maintains `recRef = useRef(rec)` (line 70) and syncs it via effect (line 71-73) — but doesn't use it in the keyboard handler.
+  1037→- **Impact:** During recording, `addEventListener`/`removeEventListener` is called ~4-8×/sec. Each call is cheap but cumulatively wasteful, and it forces the handler closure to be rebuilt constantly. May contribute to jank on low-end devices.
+  1038→- **Recommended fix:** Use `recRef.current` inside the handler instead of `rec`, and drop `rec` from deps:
+  1039→  ```ts
+  1040→  useEffect(() => {
+  1041→    const handler = (e: KeyboardEvent) => {
+  1042→      const r = recRef.current;
+  1043→      // ... use r.isRecording, r.settings, etc.
+  1044→    };
+  1045→    window.addEventListener("keydown", handler);
+  1046→    return () => window.removeEventListener("keydown", handler);
+  1047→  }, [shortcuts, toggleLang, toggleTheme]);
+  1048→  ```
+  1049→
+  1050→---
+  1051→
+  1052→#### CODE-014 — MEDIUM — PiP video element + event listeners never cleaned up
+  1053→- **File:** `src/hooks/use-recorder.ts:1416-1434`
+  1054→- **Problem:** `ensurePipVideo()` creates a hidden `<video>` element, appends it to `document.body`, and attaches `enterpictureinpicture` / `leavepictureinpicture` listeners. The element + listeners persist for the page lifetime. `cleanupMedia` (line 520-522) only sets `pipVideoRef.current.srcObject = null` — it does NOT remove the element from the DOM, does NOT remove the event listeners, and does NOT exit PiP (well, it does exit PiP at line 511-517, but not always). On hook unmount (`cleanupAll` → `cleanupMedia`), the hidden `<video>` is orphaned in `document.body`.
+  1055→- **Root cause:** `ensurePipVideo` is called once per recording session; the element is reused. There's no teardown path that removes it.
+  1056→- **Impact:** (1) Hidden DOM node leaks across hot-reloads in dev. (2) Two event listeners leak per session. (3) If the user navigates away and back (SPA), each mount creates a new PiP video, leaving the old ones in the DOM. (4) Memory: the video element holds a reference to the last `srcObject` stream until GC.
+  1057→- **Recommended fix:** In `cleanupMedia` or `cleanupAll`:
+  1058→  ```ts
+  1059→  if (pipVideoRef.current) {
+  1060→    pipVideoRef.current.srcObject = null;
+  1061→    pipVideoRef.current.remove();  // removes from DOM
+  1062→    pipVideoRef.current = null;
+  1063→  }
+  1064→  ```
+  1065→  Use named listener functions so they can be `removeEventListener`'d, or rely on `.remove()` to drop all listeners (the GC will collect them once the element is detached and no other refs exist).
+  1066→
+  1067→---
+  1068→
+  1069→#### CODE-015 — MEDIUM — `startRecording` is a 310-line function with 115-line inline `onstop` (high cyclomatic complexity)
+  1070→- **File:** `src/hooks/use-recorder.ts:1490-1802`
+  1071→- **Problem:** `startRecording` is a single `useCallback` of ~310 lines with: nested try/catch (3 levels), an `await runCountdown`, an `await getDisplayMedia`, an `await getUserMedia`, an `await new Promise` for `loadedmetadata`, a `vTrack.addEventListener("ended", ...)`, an inline `recorder.ondataavailable`, `recorder.onerror`, `recorder.onstop` (115 lines), then 6 lines of `recorder.start() + setStatus + startTimer + startStatsLoop + startProfiling + startFpsMeasurement + setInterval(checkAdaptiveFps) + startMicLevelLoop + startWaveformLoop`. The dependency array has 17 entries.
+  1072→- **Root cause:** Incremental growth across Rounds 1, 3, 4, 5, 7, 8, 10, 11 — each round added a few lines to `startRecording` and a few to `onstop` without extracting helpers.
+  1073→- **Impact:** (a) Untestable without mocking 10+ browser APIs. (b) The 115-line `onstop` handler is especially error-prone — it must mirror `cleanupMedia`'s teardown but also build the result blob + compute stats + add to history. (c) High risk of partial-failure states: if `getUserMedia` for mic fails (caught at 1568-1576), the function continues with screen-only — but if `buildMixedAudio` later fails (no try/catch around line 1627), the whole recording aborts via the outer catch at 1798-1801, leaking the screen stream (because `cleanupMedia` is called, but the order of ref-nulling vs. stream-stopping is fragile).
+  1074→- **Recommended fix:** Extract `setupScreenCapture()`, `setupMicrophone()`, `setupCanvasCompositor()`, `buildCombinedStream()`, `createMediaRecorder()`, `finalizeRecording()` (the `onstop` body) as separate functions. Each returns its slice of state; `startRecording` becomes a 30-line orchestrator.
+  1075→
+  1076→---
+  1077→
+  1078→#### CODE-016 — MEDIUM — `recorder.onstop` duplicates `cleanupMedia` logic (drift risk)
+  1079→- **File:** `src/hooks/use-recorder.ts:1658-1772` vs `477-563`
+  1080→- **Problem:** The `onstop` handler manually: stops `screenStreamRef`, `micStreamRef`, `combinedStreamRef`; nulls their refs; closes `audioContextRef`; nulls `audioDestRef` + `analyserRef`; detaches `sVideo.srcObject`; cancels `rafRef`, `micLevelRafRef`, `timerRef`, `statsTimerRef`, `fpsMeasureRafRef`, `waveformRafRef`, `downgradeCheckRef`; resets `actualFps`/`fpsDowngraded`/`effectiveFps`/`waveform`. This is ~70% identical to `cleanupMedia` (477-563). The difference: `onstop` keeps the webcam stream for idle preview; `cleanupMedia` stops it.
+  1081→- **Root cause:** `cleanupMedia` stops the webcam stream, but `onstop` wants to keep it. So `onstop` was written as a parallel cleanup rather than parameterizing `cleanupMedia`.
+  1082→- **Impact:** If a new ref/timer/stream is added in Round 12, the developer must remember to add it to BOTH `cleanupMedia` AND `onstop`. Easy to forget → leak. Already, `cleanupMedia` clears `pipActive` and exits PiP (510-518), but `onstop` does NOT — so stopping a recording leaves PiP active (the hidden video keeps playing the now-stopped stream — actually the stream is stopped so PiP shows a frozen frame).
+  1083→- **Recommended fix:** Parameterize `cleanupMedia({ keepWebcam?: boolean, exitPiP?: boolean })` and call it from `onstop` with `{ keepWebcam: true, exitPiP: true }`. Single source of truth.
+  1084→
+  1085→---
+  1086→
+  1087→#### CODE-017 — MEDIUM — `loadPrefs` accepts any object shape without field validation
+  1088→- **File:** `src/hooks/use-recorder.ts:195-206`
+  1089→- **Problem:**
+  1090→  ```ts
+  1091→  const parsed = JSON.parse(raw);
+  1092→  if (!parsed || typeof parsed !== "object") return null;
+  1093→  return parsed as Partial<PersistablePrefs>;
+  1094→  ```
+  1095→  No check that `parsed` is not an array (`typeof [] === "object"`). No field-type checks. The downstream merge `setSettings((prev) => ({ ...prev, ...prefs }))` blindly spreads.
+  1096→- **Root cause:** Same as CODE-011 / SEC-008.
+  1097→- **Impact:** Same as SEC-008 — persistent client-side DoS, NaN propagation, crashes.
+  1098→- **Recommended fix:** `if (Array.isArray(parsed)) return null;` + per-field type/range validation (sketched in SEC-008). Recommend extracting a `validatePrefs(obj): Partial<PersistablePrefs>` pure function that can be unit-tested.
+  1099→
+  1100→---
+  1101→
+  1102→#### CODE-018 — MEDIUM — `useEffect` watches `settings.watermarkLogoDataUrl` but reads `settingsRef.current.watermarkLogoDataUrl`
+  1103→- **File:** `src/hooks/use-recorder.ts:361-377`
+  1104→- **Problem:**
+  1105→  ```ts
+  1106→  useEffect(() => {
+  1107→    const dataUrl = settingsRef.current.watermarkLogoDataUrl;   // ← reads from ref
+  1108→    if (!dataUrl) { ... return; }
+  1109→    const img = new Image();
+  1110→    img.onload = () => { watermarkLogoReadyRef.current = true; };
+  1111→    ...
+  1112→  }, [settings.watermarkLogoDataUrl]);   // ← dep is the state value
+  1113→  ```
+  1114→  The effect depends on `settings.watermarkLogoDataUrl` (the state) but reads `settingsRef.current.watermarkLogoDataUrl` (the ref). These are usually in sync (the ref-sync effect at line 345-347 runs after every render), but in edge cases (rapid updates within the same commit) the ref may lag the state by one render. The effect could read a stale ref value while being triggered by the new state value.
+  1115→- **Root cause:** Mixed use of state (in deps) and ref (in body) for the same field.
+  1116→- **Impact:** Low probability, but if it manifests, the watermark logo image would be loaded from the wrong data URL. Hard to debug.
+  1117→- **Recommended fix:** Read from the dep directly: `const dataUrl = settings.watermarkLogoDataUrl;`. Or depend on `[]` and read only from the ref. Don't mix.
+  1118→
+  1119→---
+  1120→
+  1121→#### CODE-019 — MEDIUM — Missing `useEffect` deps masked by `react-hooks/exhaustive-deps: off`
+  1122→- **Files:** `src/hooks/use-recorder.ts:671-679` (missing `settings.webcamEnabled`, `status`, `enableWebcam`); `src/app/page.tsx:67-69` (`annotationsRef` effect deps `[annotations]` is OK); others.
+  1123→- **Problem:** With `exhaustive-deps` off, missing deps don't error. The `selectedCameraId` watcher at 671 reads `settings.webcamEnabled`, `status`, and calls `enableWebcam` — none are in deps. Today it works because `enableWebcam` is recreated when `selectedCameraId` changes (its dep), and the effect re-runs on `selectedCameraId` change, capturing fresh closures. But if someone changes `enableWebcam`'s deps, this effect could capture a stale `enableWebcam`.
+  1124→- **Root cause:** Rule disabled (CODE-002).
+  1125→- **Impact:** Latent stale-closure bugs; brittle to refactoring.
+  1126→- **Recommended fix:** Re-enable `react-hooks/exhaustive-deps` as a warning (CODE-002). Add missing deps. For effects that intentionally use refs to avoid re-runs, add an `// eslint-disable-next-line react-hooks/exhaustive-deps` with a comment explaining why.
+  1127→
+  1128→---
+  1129→
+  1130→#### CODE-020 — MEDIUM — `presets.ts` re-exports `OutputQuality` and `FrameRate` types from other modules
+  1131→- **File:** `src/lib/presets.ts:83`
+  1132→- **Problem:** `export { type OutputQuality, type FrameRate };` re-exports types that `presets.ts` imports from `@/lib/recorder-utils` and `@/lib/i18n`. This creates two import paths for the same type: `import type { OutputQuality } from "@/lib/recorder-utils"` vs `import type { OutputQuality } from "@/lib/presets"`. Some files use one, some use the other.
+  1133→- **Root cause:** Convenience re-export.
+  1134→- **Impact:** Confusing for new contributors ("which is the canonical source?"). Risk of circular imports if `presets.ts` ever imports from a file that imports from `presets.ts`.
+  1135→- **Recommended fix:** Remove the re-export. Update `control-panel.tsx:40` (`import type { Lang, OutputQuality as Q } from "@/lib/i18n"`) — `OutputQuality` should come from `@/lib/recorder-utils`, not `@/lib/i18n` (it's defined in `recorder-utils.ts:4`, though `i18n.ts:8` also defines it — itself a duplicate, see INFO below).
+  1136→
+  1137→---
+  1138→
+  1139→#### CODE-021 — LOW — Inconsistent error vs. warning severity for permission denials
+  1140→- **File:** `src/hooks/use-recorder.ts:1525-1530` (screen denied → `setError`), `1570-1576` (mic denied → `setWarning`), `644-650` (cam denied → `setError`)
+  1141→- **Problem:** Screen-denied and cam-denied both call `setError` (toast variant=destructive, red). Mic-denied calls `setWarning` (toast default variant, gray). Same `NotAllowedError` pattern, different UX severity.
+  1142→- **Root cause:** Mic denial is non-fatal (recording continues without mic), so it's a warning. Screen denial is fatal (no screen = no recording), so it's an error. Cam denial is non-fatal too but is treated as error — inconsistent with mic.
+  1143→- **Impact:** Cam denial shows a scary red toast for a non-fatal condition.
+  1144→- **Recommended fix:** Change cam-denied to `setWarning("warnCamNoStream")` for consistency with mic. Or define a clear policy: fatal = error, non-fatal = warning, and apply uniformly.
+  1145→
+  1146→---
+  1147→
+  1148→#### CODE-022 — LOW — Obscure chained regex for webcam position i18n key
+  1149→- **File:** `src/components/recorder/control-panel.tsx:406`
+  1150→- **Problem:**
+  1151→  ```ts
+  1152→  {t(`pos${p.replace(/-(.)/g, (_, c) => c.toUpperCase()).replace(/^./, (c) => c.toUpperCase())}`)}
+  1153→  ```
+  1154→  Converts `top-left` → `topLeft` → `TopLeft` → `posTopLeft`. Two chained regexes with capture groups, hard to read, no comment.
+  1155→- **Root cause:** Compactness over clarity.
+  1156→- **Impact:** Future contributors must mentally execute the regex to understand which i18n key is being looked up. Risk of typo breaking all 4 position labels silently (would render the raw key like `posTopLeft`).
+  1157→- **Recommended fix:** Use a lookup map:
+  1158→  ```ts
+  1159→  const POS_KEY: Record<WebcamPosition, string> = {
+  1160→    "top-left": "posTopLeft", "top-right": "posTopRight",
+  1161→    "bottom-left": "posBottomLeft", "bottom-right": "posBottomRight",
+  1162→  };
+  1163→  // ...
+  1164→  {t(POS_KEY[p])}
+  1165→  ```
+  1166→
+  1167→---
+  1168→
+  1169→#### CODE-023 — LOW — `useRecorder` returns 60+ values in a flat object
+  1170→- **File:** `src/hooks/use-recorder.ts:2030-2122`
+  1171→- **Problem:** The hook returns a single flat object with ~60 properties: 22 state values, 30+ action callbacks, 4 helper functions (`formatDuration`, `formatBytes`, `mimeToLabel` — pure functions that don't belong on the hook), and 4 derived booleans. Consumers do `const rec = useRecorder(...)` and access `rec.X` — every consumer re-renders when any of the 60 values changes.
+  1172→- **Root cause:** Organic growth; no selector pattern.
+  1173→- **Impact:** Performance: every `elapsed` tick (250ms) re-renders every component that consumes `rec`, even if it only cares about `rec.settings.webcamEnabled`. Bundle: tree-shaking can't drop unused actions because they're all on one object.
+  1174→- **Recommended fix:** Group into `rec.state`, `rec.actions`, `rec.derived` sub-objects (useMemo'd). Or adopt a selector pattern: `const webcamEnabled = useRecorder(s => s.settings.webcamEnabled)`. Or split the hook (CODE-004) and let components import only the slice they need.
+  1175→
+  1176→---
+  1177→
+  1178→#### CODE-024 — LOW — `formatBytes` and `formatDuration` handle invalid input inconsistently
+  1179→- **File:** `src/lib/recorder-utils.ts:13-20, 23-29`
+  1180→- **Problem:** `formatDuration` clamps negatives/NaN to `0` and returns `"00:00"`. `formatBytes` returns `"0 B"` for `!bytes || bytes < 0` — but for `NaN`, `!NaN` is `true`, so it returns `"0 B"` (OK). For `Infinity`, `Math.log(Infinity)` is `Infinity`, `Math.floor(Infinity)` is `Infinity`, `Math.min(3, Infinity)` is `3`, `Math.pow(1024, 3)` is fine, `Infinity / 1024**3` is `Infinity`, `toFixed(1)` returns `"Infinity"`, so it returns `"Infinity GB"`. Inconsistent with duration's clamp.
+  1181→- **Root cause:** Different authors / different days.
+  1182→- **Impact:** If `result.size` is ever `Infinity` (e.g., blob size overflow — unlikely but possible), the UI shows "Infinity GB".
+  1183→- **Recommended fix:** Add `if (!Number.isFinite(bytes) || bytes < 0) return "0 B";` to `formatBytes`.
+  1184→
+  1185→---
+  1186→
+  1187→#### CODE-025 — LOW — Settings persistence has no debounce; writes on every keystroke
+  1188→- **File:** `src/hooks/use-recorder.ts:400-409`
+  1189→- **Problem:**
+  1190→  ```ts
+  1191→  useEffect(() => {
+  1192→    const prefs = PERSISTABLE_KEYS.reduce(...);
+  1193→    savePrefs(prefs);
+  1194→  }, [settings]);
+  1195→  ```
+  1196→  Every `settings` change triggers `JSON.stringify` + `localStorage.setItem`. The `watermarkText` input (`control-panel.tsx:562-568`) updates `settings.watermarkText` on every keystroke → every keystroke serializes ALL persistable settings and writes to localStorage.
+  1197→- **Root cause:** No debounce.
+  1198→- **Impact:** Minor: typing a 30-char watermark does 30 `JSON.stringify` + 30 `setItem` calls. localStorage is synchronous, so this blocks the main thread for ~1-5ms per write. On low-end devices, may cause input lag.
+  1199→- **Recommended fix:** Wrap `savePrefs` in a `setTimeout(savePrefs, 500)` debounce, or use `requestIdleCallback`.
+  1200→
+  1201→---
+  1202→
+  1203→#### CODE-026 — LOW — `OutputQuality` type defined in two places
+  1204→- **Files:** `src/lib/recorder-utils.ts:4` and `src/lib/i18n.ts:8`
+  1205→- **Problem:** `export type OutputQuality = "720" | "1080" | "1440" | "native";` is defined identically in both files. `presets.ts:3` imports from `recorder-utils`; `control-panel.tsx:40` imports from `i18n` (as `Q`). Two sources of truth.
+  1206→- **Root cause:** Copy-paste during initial setup.
+  1207→- **Impact:** If one is extended (e.g., add `"2160"`), the other won't be — type mismatch.
+  1208→- **Recommended fix:** Define once in `recorder-utils.ts` (or a dedicated `types.ts`), import everywhere.
+  1209→
+  1210→---
+  1211→
+  1212→#### CODE-027 — LOW — `t(key)` returns the key itself if missing (silent i18n failure)
+  1213→- **File:** `src/lib/i18n.ts:889-891`
+  1214→- **Problem:** `return dictionaries[lang]?.[key] ?? dictionaries.en[key] ?? key;` — if a key is missing from both `en` and `ar`, the UI renders the raw key string (e.g., `"posTopLeft"`). No console warning.
+  1215→- **Root cause:** Fallback-by-design, but no dev-mode warning.
+  1216→- **Impact:** Typos in `t("...")` calls render as raw strings in production with no signal.
+  1217→- **Recommended fix:** In dev (`process.env.NODE_ENV === "development"`), `console.warn(\`Missing i18n key: ${key}\`)` when falling back to the key itself.
+  1218→
+  1219→---
+  1220→
+  1221→#### CODE-028 — LOW — `e.target as HTMLElement | null` cast in keyboard handler
+  1222→- **File:** `src/app/page.tsx:130`
+  1223→- **Problem:** `const target = e.target as HTMLElement | null;` — `KeyboardEvent.target` is `EventTarget | null`. The cast assumes the target is an HTMLElement, but it could be a `Document` or `Window` if the event was dispatched programmatically.
+  1224→- **Root cause:** Convenience to access `.tagName` and `.isContentEditable`.
+  1225→- **Impact:** If `e.target` is `document` (rare but possible via `document.dispatchEvent`), `target.tagName` is `undefined`, the `isEditable` check is `false`, and the shortcut fires — minor unexpected behavior.
+  1226→- **Recommended fix:** `const target = e.target instanceof HTMLElement ? e.target : null;` then `target?.tagName`.
+  1227→
+  1228→---
+  1229→
+  1230→#### CODE-029 — LOW — Recording timeline has `role="slider"` + `tabIndex={0}` but no keyboard handler
+  1231→- **File:** `src/components/recorder/recording-timeline.tsx:70-80`
+  1232→- **Problem:** The timeline bar declares `role="slider"` with `aria-valuenow`, `aria-valuemax`, `aria-valuemin`, and `tabIndex={0}` — implying keyboard-operable (arrow keys to seek). But there is no `onKeyDown` handler. WAI-ARIA slider pattern requires Left/Right (and Up/Down) arrow keys to decrement/increment the value.
+  1233→- **Root cause:** ARIA attributes added for screen readers, keyboard interaction not implemented.
+  1234→- **Impact:** Screen reader users hear "slider" but can't operate it with the keyboard. Violates WCAG 2.1 SC 2.1.1 (Keyboard) and SC 4.1.2 (Name, Role, Value).
+  1235→- **Recommended fix:** Either (a) add `onKeyDown` to handle ArrowLeft/ArrowRight/ArrowUp/ArrowDown/Home/End and seek, or (b) change `role` to `"progressbar"` (read-only, no keyboard expectation).
+  1236→
+  1237→---
+  1238→
+  1239→#### CODE-030 — LOW — Watermark logo `<img>` has hardcoded English `alt="logo"`
+  1240→- **File:** `src/components/recorder/control-panel.tsx:675`
+  1241→- **Problem:** `<img src={settings.watermarkLogoDataUrl} alt="logo" className="max-h-full max-w-full object-contain" />` — `alt="logo"` is a literal English string, not localized. In Arabic mode, screen readers will announce "logo" in English.
+  1242→- **Root cause:** Hardcoded string.
+  1243→- **Impact:** Minor accessibility issue for Arabic screen-reader users.
+  1244→- **Recommended fix:** `alt={t("watermarkLogo")}` (which has an Arabic translation).
+  1245→
+  1246→---
+  1247→
+  1248→#### CODE-031 — LOW — Color swatch buttons use hex codes as `aria-label`
+  1249→- **File:** `src/components/recorder/annotation-toolbar.tsx:91`
+  1250→- **Problem:** `aria-label={color}` where `color` is e.g. `"#ef4444"`. Screen readers announce "hash e f four four four four" — not useful.
+  1251→- **Root cause:** Used the value as the label for simplicity.
+  1252→- **Impact:** Accessibility: blind users can't identify colors.
+  1253→- **Recommended fix:** Add a `COLOR_LABELS: Record<string, string>` map (e.g., `{"#ef4444": t("colorRed"), ...}`) and use it for `aria-label`. Or use a visible `<span class="sr-only">` with the color name.
+  1254→
+  1255→---
+  1256→
+  1257→#### CODE-032 — LOW — Waveform `<canvas>` lacks `role="img"` and accessible description
+  1258→- **File:** `src/components/recorder/waveform-viz.tsx:98-102`
+  1259→- **Problem:** `<canvas ref={canvasRef} className="h-6 flex-1" aria-label={t("waveformMic")} />` — has `aria-label` but no `role="img"`. Some screen readers skip `<canvas>` content entirely without an explicit role.
+  1260→- **Root cause:** Assumed `aria-label` was sufficient.
+  1261→- **Impact:** Screen reader may not announce the waveform's purpose. The level percentage is shown in a separate `<span>` (line 103-105) which IS readable, so the impact is limited.
+  1262→- **Recommended fix:** Add `role="img"` to the canvas, or wrap in `<figure>` with `<figcaption class="sr-only">`.
+  1263→
+  1264→---
+  1265→
+  1266→#### CODE-033 — INFO — `useAnnotations` hook is a good architectural example
+  1267→- **File:** `src/hooks/use-annotations.ts` (301 LOC)
+  1268→- **Problem (positive):** The annotations hook is well-scoped: it owns only annotation state (`strokes`, `activeStroke`, `textCursor`, `settings`) + drawing logic (`drawAnnotations`) + import/export. It does NOT touch media streams, canvas elements, or the recorder's lifecycle. It accepts a canvas context via its `drawAnnotations(ctx)` callback. This is the pattern `use-recorder.ts` should follow.
+  1269→- **Impact:** Easy to test, easy to reason about, no side effects on the recorder.
+  1270→- **Recommended action:** Use as a template when splitting `use-recorder.ts` (CODE-004).
+  1271→
+  1272→---
+  1273→
+  1274→#### CODE-034 — INFO — Good practices observed (positive findings)
+  1275→- **No `eval()` / `new Function()` / `document.write()` / string-arg `setTimeout`** anywhere in `src/` (confirmed by SEC-019).
+  1276→- **No `@ts-ignore` / `@ts-expect-error` / `@ts-nocheck`** in `src/` (grep returned 0 matches).
+  1277→- **All 11 `URL.createObjectURL` calls have matching `revokeObjectURL`** (confirmed by SEC-019; re-verified).
+  1278→- **MediaStream tracks stopped** in `cleanupMedia` (lines 536-543) and `onstop` (lines 1721-1726) — except for the webcam leak in CODE-001.
+  1279→- **AudioContext closed** in `cleanupMedia` (546-555) and `onstop` (1728-1737).
+  1280→- **All `requestAnimationFrame` handles tracked in refs** (`rafRef`, `micLevelRafRef`, `fpsMeasureRafRef`, `waveformRafRef`) and cancelled in cleanup.
+  1281→- **All `setInterval` handles tracked in refs** (`timerRef`, `statsTimerRef`, `profilingTimerRef`, `downgradeCheckRef`) and cleared in cleanup.
+  1282→- **`drawRoundRect`** prefers native `ctx.roundRect` with manual fallback — good compat.
+  1283→- **`pickMimeType`** negotiates 5 candidates — good defensive coding.
+  1284→- **`computeCanvasSize`** rounds to even dimensions — codec-friendly.
+  1285→- **Annotation import validation** (`use-annotations.ts:250-268`) wraps `JSON.parse` in try/catch + validates stroke shape — defensive.
+  1286→- **`triggerDownload` patterns** all append→click→remove the `<a>` element synchronously — no leak.
+  1287→- **`next.config.ts`** has `output: "standalone"` — good for self-hosting.
+  1288→- **`tsconfig.json`** has `strict: true` (verified separately) — TypeScript strictness is on at the compiler level even though ESLint rules are off.
+  1289→- **No conditional hook calls** — all `useState`/`useRef`/`useEffect`/`useCallback` are at the top level of `useRecorder` and `useAnnotations`.
+  1290→
+  1291→---
+  1292→
+  1293→#### CODE-035 — INFO — TypeScript check passes cleanly in `src/`
+  1294→- **Command:** `cd /home/z/my-project && npx tsc --noEmit 2>&1 | head -50`
+  1295→- **Result:** 0 errors in `src/`. 4 errors in `examples/websocket/{frontend,server}.tsx` (missing `socket.io` / `socket.io-client` types — external demo, not part of the recorder app) and 2 errors in `skills/{image-edit,stock-analysis-skill}` (external skill demos).
+  1296→- **Caveat:** `next.config.ts:7-9` has `typescript: { ignoreBuildErrors: true }` (per SEC-004), so future type errors will NOT block `next build`. Re-enabling type-checking at build time is recommended (SEC-004).
+  1297→
+  1298→---
+  1299→
+  1300→#### CODE-036 — INFO — `useRecorder` leaks pure helper functions into its return value
+  1301→- **File:** `src/hooks/use-recorder.ts:2119-2121`
+  1302→- **Problem:** The hook returns `formatDuration`, `formatBytes`, `mimeToLabel` — these are pure functions imported from `@/lib/recorder-utils.ts`. They have no dependency on hook state. Returning them on the hook object forces every consumer to access them via `rec.formatDuration(...)` instead of importing directly.
+  1303→- **Impact:** Leaky abstraction. Consumers can't tell which functions are stateful vs. pure. Bundle: tree-shaking still works (the functions are re-exported by reference), but the mental model is muddy.
+  1304→- **Recommended fix:** Remove from the hook return. Update `final-recording.tsx`, `live-preview.tsx`, etc. to `import { formatDuration, formatBytes, mimeToLabel } from "@/lib/recorder-utils"`.
+  1305→
+  1306→---
+  1307→
+  1308→#### CODE-037 — INFO — `app/page.tsx` (374 lines) is a moderately large orchestrator
+  1309→- **File:** `src/app/page.tsx`
+  1310→- **Problem:** The page manages: language state + persistence, theme, shortcuts state + persistence, auto-stop effect, scheduler enabled state, browser-detection banner, unsupported-blocker, keyboard handler (66 lines), error→toast bridge, warning→toast bridge, and 14 child components. It's not yet unmanageable but is approaching the limit.
+  1311→- **Impact:** Readable today, but adding Round 12+ features will push it over.
+  1312→- **Recommended fix:** Extract `useKeyboardShortcuts(rec, shortcuts, toggleLang, toggleTheme)` and `useToastBridge(rec, lang, t)` hooks. Or adopt a reducer for the page-level state (`lang`, `shortcuts`, `autoStopMs`, `schedulerEnabled`, `showBanner`, `isChromium`).
+  1313→
+  1314→---
+  1315→
+  1316→#### CODE-038 — INFO — Round-by-round worklog claim "All React Compiler rules satisfied" is inaccurate
+  1317→- **Files:** `eslint.config.mjs:32` (`"react-compiler/react-compiler": "off"`), `worklog.md` (Rounds 1-11 each claim "All React Compiler rules satisfied")
+  1318→- **Problem:** The `react-compiler/react-compiler` ESLint rule is disabled in the config. The worklog's repeated claim that "All React Compiler rules satisfied" is technically vacuous — you can't "satisfy" a rule that's off. Similarly, `react-hooks/exhaustive-deps` is off, so "satisfies `react-hooks/refs` & `react-hooks/immutability` & `react-hooks/preserve-manual-memoization`" (which ARE on, per the config) is the only meaningful subset.
+  1319→- **Impact:** False confidence in the codebase's React-Compiler readiness. If someone enables the React Compiler (the actual babel plugin, not just the lint rule), latent issues may surface.
+  1320→- **Recommended fix:** Re-enable `react-compiler/react-compiler` as a warning, fix the resulting warnings, then update the worklog to reflect reality.
+  1321→
+  1322→---
+  1323→
+  1324→#### CODE-039 — INFO — `screenStream` state is exposed but only used for direct-mode preview
+  1325→- **File:** `src/hooks/use-recorder.ts:290, 2046`
+  1326→- **Problem:** `screenStream` is a `useState` that's set in `startRecording` and cleared in `cleanupMedia`. It's exposed in the return object. The only consumer is `LivePreview` (line 87-95) which attaches it to a `<video>` when `previewMode === "direct"`. This is a `MediaStream` object held in React state — every set causes a re-render of every consumer of `useRecorder`.
+  1327→- **Impact:** Minor: during recording start/stop, one extra re-render. The stream itself is also held in `screenStreamRef` (the ref is the source of truth for cleanup). Having both state + ref for the same stream is redundant but not buggy.
+  1328→- **Recommended fix:** Could be replaced with a ref + a `useSyncExternalStore`-style subscription, but the complexity isn't worth it. Leave as-is; just note the dual state+ref pattern.
+  1329→
+  1330→---
+  1331→
+  1332→### Summary Table
+  1333→
+  1334→| ID | Severity | File:Line | Issue |
+  1335→|----|----------|-----------|-------|
+  1336→| CODE-001 | CRITICAL | use-recorder.ts:620-651 | `enableWebcam` overwrites stream ref without stopping previous (camera light stuck, leak) |
+  1337→| CODE-002 | HIGH | eslint.config.mjs:11-44 | All meaningful lint rules disabled; "0 errors" is hollow |
+  1338→| CODE-003 | HIGH | recording-timeline.tsx:24,43 | `document.querySelector("video[controls][src]")` binds to wrong video when clips exist |
+  1339→| CODE-004 | HIGH | use-recorder.ts (entire) | 2,125-line god hook; should split into ~8 focused hooks |
+  1340→| CODE-005 | HIGH | use-recorder.ts:1188-1207 | Countdown `setTimeout` uncancellable; phantom ticks + hanging `await` |
+  1341→| CODE-006 | MEDIUM | use-recorder.ts:722,1137,1145,1583,1600,1616 | 6 non-null assertions (`!`) bypass null safety |
+  1342→| CODE-007 | MEDIUM | use-recorder.ts (24 spots) + others | 29 silent `catch {}` blocks; no logging, no user feedback |
+  1343→| CODE-008 | MEDIUM | help-section.tsx:97, shortcut-editor.tsx:191-192, waveform-viz.tsx:111 | Dead code: `void X;` hacks for unused imports |
+  1344→| CODE-009 | MEDIUM | use-recorder.ts + use-annotations.ts (7 funcs) | DRY: 7 near-identical `download*` functions |
+  1345→| CODE-010 | MEDIUM | use-recorder.ts (3 funcs) | DRY: 3 near-identical `copy*` clipboard functions |
+  1346→| CODE-011 | MEDIUM | use-recorder.ts:202, shortcuts.ts:46-48 | Unsafe `as` casts on `JSON.parse` output (also SEC-008/009) |
+  1347→| CODE-012 | MEDIUM | use-recorder.ts (5 spots) + use-annotations.ts:93 | Side effects inside state updaters (anti-pattern) |
+  1348→| CODE-013 | MEDIUM | page.tsx:128-195 | Keyboard effect re-subscribes on every `rec` change (perf waste) |
+  1349→| CODE-014 | MEDIUM | use-recorder.ts:1416-1434 | PiP video element + listeners never removed from DOM |
+  1350→| CODE-015 | MEDIUM | use-recorder.ts:1490-1802 | `startRecording` is 310 lines; `onstop` is 115 lines inline |
+  1351→| CODE-016 | MEDIUM | use-recorder.ts:1658-1772 vs 477-563 | `onstop` duplicates `cleanupMedia` (drift risk) |
+  1352→| CODE-017 | MEDIUM | use-recorder.ts:195-206 | `loadPrefs` accepts any object shape (also SEC-008) |
+  1353→| CODE-018 | MEDIUM | use-recorder.ts:361-377 | Effect watches state but reads ref for same field |
+  1354→| CODE-019 | MEDIUM | use-recorder.ts:671-679 + others | Missing `useEffect` deps masked by `exhaustive-deps: off` |
+  1355→| CODE-020 | MEDIUM | presets.ts:83 | Re-exports `OutputQuality`/`FrameRate` from other modules |
+  1356→| CODE-021 | LOW | use-recorder.ts:1525,1570,644 | Inconsistent error vs. warning severity for permission denials |
+  1357→| CODE-022 | LOW | control-panel.tsx:406 | Obscure chained regex for i18n key |
+  1358→| CODE-023 | LOW | use-recorder.ts:2030-2122 | Hook returns 60+ flat values; no selector pattern |
+  1359→| CODE-024 | LOW | recorder-utils.ts:23-29 | `formatBytes` returns "Infinity GB" for `Infinity` input |
+  1360→| CODE-025 | LOW | use-recorder.ts:400-409 | Settings persistence un-debounced; writes every keystroke |
+  1361→| CODE-026 | LOW | recorder-utils.ts:4, i18n.ts:8 | `OutputQuality` type defined in two places |
+  1362→| CODE-027 | LOW | i18n.ts:889-891 | `t(key)` returns raw key on miss (no dev warning) |
+  1363→| CODE-028 | LOW | page.tsx:130 | `e.target as HTMLElement` cast (could be Document) |
+  1364→| CODE-029 | LOW | recording-timeline.tsx:70-80 | `role="slider"` + `tabIndex=0` but no keyboard handler (WCAG) |
+  1365→| CODE-030 | LOW | control-panel.tsx:675 | Watermark logo `alt="logo"` not localized |
+  1366→| CODE-031 | LOW | annotation-toolbar.tsx:91 | Color swatch `aria-label={color}` (hex code, not human-readable) |
+  1367→| CODE-032 | LOW | waveform-viz.tsx:98-102 | `<canvas>` lacks `role="img"` |
+  1368→| CODE-033 | INFO | use-annotations.ts | Good architectural example; template for splitting use-recorder |
+  1369→| CODE-034 | INFO | src/ (multiple) | Good practices: no eval, no ts-ignore, URLs revoked, RAF/intervals tracked |
+  1370→| CODE-035 | INFO | tsc --noEmit | 0 errors in `src/`; `ignoreBuildErrors: true` masks future errors |
+  1371→| CODE-036 | INFO | use-recorder.ts:2119-2121 | Hook returns pure helpers (`formatDuration` etc.) — leaky abstraction |
+  1372→| CODE-037 | INFO | page.tsx (374 lines) | Moderately large orchestrator; extract keyboard + toast hooks |
+  1373→| CODE-038 | INFO | eslint.config.mjs:32 + worklog | `react-compiler/react-compiler: off` contradicts worklog claims |
+  1374→| CODE-039 | INFO | use-recorder.ts:290 | `screenStream` dual state+ref pattern (redundant but not buggy) |
+  1375→
+  1376→---
+  1377→
+  1378→### Recommended Next Actions (priority order)
+  1379→
+  1380→1. **Fix CODE-001 first** — add `stopStream(webcamStreamRef.current)` before `getUserMedia` in `enableWebcam`. One-line fix, eliminates a real-world camera-light-stuck bug. CRITICAL.
+  1381→2. **Fix CODE-005** — add `countdownTimerRef` + `clearTimeout` in `cancelCountdown`. Eliminates phantom ticks + hanging `await`. Small, isolated change.
+  1382→3. **Fix CODE-003** — lift the `<video>` ref from `FinalRecording` to `page.tsx`, pass to `RecordingTimeline`. Eliminates the wrong-video-binding bug.
+  1383→4. **Re-enable lint rules (CODE-002)** — start with `@typescript-eslint/no-unused-vars` (fix the `void X;` hacks in CODE-008), `no-empty` (start logging in CODE-007), `react-hooks/exhaustive-deps` (surface CODE-019). Do this incrementally to avoid a flood of warnings.
+  1384→5. **Split `useRecorder` (CODE-004)** — the largest effort but highest long-term payoff. Start by extracting `useStatsTracker` and `useRecordingHistory` (least coupled), then `useAudioMixer`, then `useCanvasCompositor`. Keep `useRecorder` as a thin orchestrator.
+  1385→6. **Deduplicate (CODE-009, CODE-010, CODE-016)** — extract `triggerDownload`, `copyToClipboard`, parameterize `cleanupMedia`. Small, mechanical refactors.
+  1386→7. **Fix state-updater side effects (CODE-012)** — switch to ref-read + setState pattern in 6 places. Prerequisite for safely re-enabling `reactStrictMode` (SEC-004).
+  1387→8. **Clean up PiP video (CODE-014)** — remove from DOM in cleanup.
+  1388→9. **Accessibility polish (CODE-029, CODE-030, CODE-031, CODE-032)** — add keyboard handler to timeline, localize alt text, add color names, add `role="img"` to canvas.
+  1389→10. **Minor polish (CODE-021, CODE-022, CODE-024, CODE-025, CODE-026, CODE-027, CODE-028)** — consistency fixes, debounce, dedupe type definition.
+  1390→
+  1391→### No fixes applied
+  1392→Per task scope ("Do NOT fix anything — just report findings"), no source files were modified. Only this worklog entry was appended.
+  1393→
+  1394→---
+  1395→
+  1396→## Task ID: DRY-1
+  1397→## Agent: Refactoring Engineer
+  1398→
+  1399→### Task
+  1400→Create shared utilities for download and clipboard operations, then replace all duplicated implementations across the codebase.
+  1401→
+  1402→### Work Log
+  1403→
+  1404→**Step 1 — `src/lib/download-utils.ts` (new file, 67 lines):**
+  1405→- `downloadBlob(blob: Blob, filename: string): void` — creates an object URL + anchor, clicks, then revokes the URL and removes the anchor in a `finally` block. Wrapped in try/catch with `console.error` so failed downloads never throw into UI event handlers.
+  1406→- `downloadDataUrl(dataUrl: string, filename: string): void` — same anchor/click/cleanup pattern but uses the data URL directly as `href` (no object URL to create or revoke). Used by snapshot downloads where the source is a `canvas.toDataURL()` string.
+  1407→
+  1408→**Step 2 — `src/lib/clipboard-utils.ts` (new file, 28 lines):**
+  1409→- `copyToClipboard(text: string): Promise<boolean>` — guards against missing `navigator.clipboard?.writeText` (SSR + old browsers), wraps the write in try/catch with `console.error`, returns `true`/`false`. Never throws.
+  1410→
+  1411→**Step 3 — Replaced duplicate download implementations in `src/hooks/use-recorder.ts` (6 functions):**
+  1412→
+  1413→| Function | Before (lines) | After |
+  1414→|---|---|---|
+  1415→| `downloadSnapshot` | 7 lines, manual anchor + `snap.url` | `downloadDataUrl(snap.url, …)` — `snap.url` is a `canvas.toDataURL()` result, so data URL helper is the correct fit. |
+  1416→| `downloadClip` | 7 lines, manual anchor + `clip.url` | `downloadBlob(clip.blob, …)` — Clip type has both `url` and `blob`; passing the Blob lets the helper own URL lifecycle. |
+  1417→| `downloadHistoryEntry` | 7 lines, manual anchor + `entry.url` | `downloadBlob(entry.blob, …)` — HistoryEntry also has both `url` and `blob`. |
+  1418→| `downloadVideo` | 8 lines, manual anchor + `result.url` | `downloadBlob(result.blob, …)` — RecordingResult has both `url` and `blob`. |
+  1419→| `downloadStatsJson` | 10 lines, manual blob+URL+anchor+revoke | `downloadBlob(blob, …)` — only the Blob + filename remain. |
+  1420→| `downloadManifest` | 10 lines, manual blob+URL+anchor+revoke | `downloadBlob(blob, …)` |
+  1421→
+  1422→**Bonus (also in the "find ALL duplicates" spirit):** Refactored `downloadJson` in `src/hooks/use-annotations.ts` to use `downloadBlob` — same exact pattern as the stats/manifest downloads. No signature change, only the body.
+  1423→
+  1424→**Step 4 — Replaced duplicate clipboard implementations in `src/hooks/use-recorder.ts` (3 functions):**
+  1425→
+  1426→| Function | Before | After |
+  1427→|---|---|---|
+  1428→| `copyTechnicalDetails` | inline `try { await navigator.clipboard.writeText(details); return true; } catch { return false; }` | `return copyToClipboard(details);` |
+  1429→| `copyStatsJson` | same inline pattern | `return copyToClipboard(exportStatsJson());` |
+  1430→| `copyManifest` | same inline pattern | `return copyToClipboard(exportManifestJson());` |
+  1431→
+  1432→All three keep their `Promise<boolean>` signature — `copyToClipboard` returns `Promise<boolean>`, so the `async` wrappers now just `return` it directly.
+  1433→
+  1434→**Component check:** `clips-gallery.tsx`, `snapshots-gallery.tsx`, `history-panel.tsx` were inspected — none contain inline download/clipboard code; they all delegate to `rec.downloadClip` / `rec.downloadSnapshot` / `rec.downloadHistoryEntry` / `rec.downloadManifest` / `rec.copyManifest` from the hook. No component changes needed.
+  1435→
+  1436→**Imports added:**
+  1437→- `src/hooks/use-recorder.ts`: `import { downloadBlob, downloadDataUrl } from "@/lib/download-utils";` + `import { copyToClipboard } from "@/lib/clipboard-utils";`
+  1438→- `src/hooks/use-annotations.ts`: `import { downloadBlob } from "@/lib/download-utils";`
+  1439→
+  1440→### Verification
+  1441→- `bun run lint` → 0 errors, 0 warnings.
+  1442→- `npx tsc --noEmit 2>&1 | grep -v "examples/\|skills/"` → 0 lines (all 4 remaining TS errors are pre-existing in `examples/websocket/` and `skills/` directories, unrelated to this refactor).
+  1443→- `grep` for `document.createElement("a")` and `navigator.clipboard` across `src/` → only matches inside the two new utility files. All duplicates eliminated.
+  1444→
+  1445→### Rules Compliance
+  1446→- No hook return-object signatures changed (all 9 affected functions keep their original arity + return type).
+  1447→- No component prop interfaces changed.
+  1448→- Error-handling semantics preserved: `Promise<boolean>` clipboard functions still resolve to `true`/`false`; `void` download functions still don't throw (now they also don't throw on DOM failure, which is a strict improvement).
+  1449→- Behavioral note: download/clipboard failures now log to `console.error` (previously swallowed silently). This is the "proper error handling" the task asked for and does not affect any caller — the boolean contract is unchanged.
+  1450→
+  1451→### Files Touched
+  1452→- **New:** `src/lib/download-utils.ts`, `src/lib/clipboard-utils.ts`
+  1453→- **Modified:** `src/hooks/use-recorder.ts` (imports + 9 function bodies), `src/hooks/use-annotations.ts` (imports + 1 function body)
+  1454→- **Untouched (verified clean):** `src/components/recorder/clips-gallery.tsx`, `snapshots-gallery.tsx`, `history-panel.tsx` — all delegate to the hook.
+  1455→
+  1456→### Next Actions (for downstream tasks)
+  1457→- Consider unifying the manual anchor pattern that may still exist in `src/components/ui/*` (file uploads, etc.) — out of scope for DRY-1.
+  1458→- The 6 `CODE-0xx` lint-rule re-enablement items in the prior worklog entry remain open; this refactor makes `no-empty` safer to re-enable for these files since errors are now logged rather than swallowed.
+  1459→

@@ -20,7 +20,7 @@ const TEMPLATE_ICONS: Record<OverlayTemplateId | "custom", React.ElementType> = 
   custom: Frame,
 };
 
-export function OverlayTemplates({ rec, lang, t }: Props) {
+export function OverlayTemplates({ rec, t }: Props) {
   const active = detectTemplate(rec.settings);
 
   const handleClick = (id: OverlayTemplateId) => {

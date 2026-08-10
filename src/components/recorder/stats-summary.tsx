@@ -13,7 +13,7 @@ type Props = {
   t: (key: string) => string;
 };
 
-export function StatsSummary({ rec, lang, t }: Props) {
+export function StatsSummary({ rec, t }: Props) {
   const s = rec.recordingStats;
   const [copied, setCopied] = useState(false);
   if (!s) return null;

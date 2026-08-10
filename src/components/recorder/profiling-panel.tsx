@@ -11,7 +11,7 @@ type Props = {
   t: (key: string) => string;
 };
 
-export function ProfilingPanel({ rec, lang, t }: Props) {
+export function ProfilingPanel({ rec, t }: Props) {
   const p = rec.profiling;
 
   if (!rec.showProfiling) return null;

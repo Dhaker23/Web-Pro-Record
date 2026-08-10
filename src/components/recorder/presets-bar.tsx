@@ -20,7 +20,7 @@ const PRESET_ICONS: Record<PresetId | "custom", React.ElementType> = {
   custom: Sparkles,
 };
 
-export function PresetsBar({ rec, lang, t }: Props) {
+export function PresetsBar({ rec, t }: Props) {
   const active = detectPreset(rec.settings);
 
   const handleClick = (id: PresetId) => {

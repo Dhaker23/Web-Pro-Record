@@ -37,7 +37,8 @@ function loadLang(): Lang {
   try {
     const v = window.localStorage.getItem(LANG_KEY);
     return v === "ar" || v === "en" ? v : "en";
-  } catch {
+  } catch (err) {
+    console.error("[loadLang] Failed to read lang from localStorage:", err);
     return "en";
   }
 }
@@ -46,8 +47,8 @@ function saveLang(l: Lang): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(LANG_KEY, l);
-  } catch {
-    /* ignore */
+  } catch (err) {
+    console.error("[saveLang] Failed to persist lang to localStorage:", err);
   }
 }
 
@@ -125,6 +126,15 @@ export default function Home() {
   }, [rec.warning, t, toast]);
 
   // Keyboard shortcuts (global, configurable). Ignores typing in inputs/selects/textareas.
+  // Uses refs for rec/toggleLang/toggleTheme to avoid re-subscribing on every render
+  // (rec changes 4x/second during recording due to elapsed timer updates).
+  const shortcutsRef = useRef(shortcuts);
+  const toggleLangRef = useRef(toggleLang);
+  const toggleThemeRef = useRef(toggleTheme);
+  useEffect(() => { shortcutsRef.current = shortcuts; }, [shortcuts]);
+  useEffect(() => { toggleLangRef.current = toggleLang; }, [toggleLang]);
+  useEffect(() => { toggleThemeRef.current = toggleTheme; }, [toggleTheme]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -136,47 +146,49 @@ export default function Home() {
         target?.isContentEditable;
       if (isEditable) return;
 
+      const r = recRef.current;
+
       // Escape always stops recording (not customizable).
       if (e.key === "Escape") {
-        if (rec.isRecording || rec.isPaused) {
-          rec.stopRecording();
+        if (r.isRecording || r.isPaused) {
+          r.stopRecording();
         }
         return;
       }
 
       const binding = eventToBinding(e);
       const matches = (action: keyof ShortcutMap) => {
-        const b = shortcuts[action];
+        const b = shortcutsRef.current[action];
         return b.combo === binding.combo && b.mod === binding.mod;
       };
 
       if (matches("startStop")) {
         e.preventDefault();
-        if (rec.isRecording) rec.pauseRecording();
-        else if (rec.isPaused) rec.resumeRecording();
-        else if (rec.canStart) void rec.startRecording();
+        if (r.isRecording) r.pauseRecording();
+        else if (r.isPaused) r.resumeRecording();
+        else if (r.canStart) void r.startRecording();
       } else if (matches("pauseResume")) {
         e.preventDefault();
-        if (rec.isRecording) rec.pauseRecording();
-        else if (rec.isPaused) rec.resumeRecording();
+        if (r.isRecording) r.pauseRecording();
+        else if (r.isPaused) r.resumeRecording();
       } else if (matches("reset")) {
         e.preventDefault();
-        if (!rec.isRecording && !rec.isPaused) rec.resetAll();
+        if (!r.isRecording && !r.isPaused) r.resetAll();
       } else if (matches("toggleLang")) {
         e.preventDefault();
-        toggleLang();
+        toggleLangRef.current();
       } else if (matches("toggleTheme")) {
         e.preventDefault();
-        toggleTheme();
+        toggleThemeRef.current();
       } else if (matches("toggleWebcam")) {
         e.preventDefault();
-        rec.toggleWebcam(!rec.settings.webcamEnabled);
+        r.toggleWebcam(!r.settings.webcamEnabled);
       } else if (matches("toggleMic")) {
         e.preventDefault();
-        rec.updateSettings("micEnabled", !rec.settings.micEnabled);
+        r.updateSettings("micEnabled", !r.settings.micEnabled);
       } else if (matches("toggleAnnotations")) {
         e.preventDefault();
-        if (rec.isRecording || rec.isPaused) {
+        if (r.isRecording || r.isPaused) {
           annotationsRef.current.updateSettings("enabled", !annotationsRef.current.settings.enabled);
         }
       } else if (matches("toggleScheduler")) {
@@ -184,15 +196,15 @@ export default function Home() {
         setSchedulerEnabled((v) => !v);
       } else if (matches("captureSnapshot")) {
         e.preventDefault();
-        if (rec.isRecording || rec.isPaused) rec.captureSnapshot();
+        if (r.isRecording || r.isPaused) r.captureSnapshot();
       } else if (matches("captureClip")) {
         e.preventDefault();
-        if (rec.isRecording || rec.isPaused) rec.captureClip();
+        if (r.isRecording || r.isPaused) r.captureClip();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [shortcuts, rec, toggleLang, toggleTheme]);
+  }, []); // Stable — uses refs for all mutable values
 
   // Round 9: auto-stop effect — stop recording when elapsed reaches the limit.
   useEffect(() => {
@@ -206,12 +218,10 @@ export default function Home() {
 
   // Browser recommendation banner
   const [showBanner, setShowBanner] = useState(false);
-  const [isChromium, setIsChromium] = useState(true);
   useEffect(() => {
     if (typeof navigator === "undefined") return;
     const ua = navigator.userAgent;
     const chromium = /Chrom(e|ium)/.test(ua) || /Edg/.test(ua);
-    setIsChromium(chromium);
     setShowBanner(!chromium);
   }, []);
 

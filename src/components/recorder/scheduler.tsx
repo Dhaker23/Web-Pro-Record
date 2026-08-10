@@ -7,7 +7,6 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/recorder-utils";
 import type { Lang } from "@/lib/i18n";
 
@@ -85,12 +84,14 @@ export function Scheduler({
     setCountdown("");
   };
 
-  // Generate a datetime-local default (now + 5 min)
-  const defaultTime = (() => {
+  // Generate a datetime-local default (now + 5 min) — memoized to avoid
+  // calling Date.now() during render (React purity rule).
+  const [defaultTime, setDefaultTime] = useState("");
+  useEffect(() => {
     const d = new Date(Date.now() + 5 * 60000);
     const pad = (n: number) => n.toString().padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  })();
+    setDefaultTime(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
+  }, []);
 
   return (
     <div className="rounded-2xl border border-border/60 bg-card/40 p-4 backdrop-blur-sm">

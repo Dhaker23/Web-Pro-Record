@@ -63,7 +63,8 @@ export function loadShortcuts(): ShortcutMap {
       }
     }
     return result;
-  } catch {
+  } catch (err) {
+    console.error("[loadShortcuts] Failed to parse shortcuts JSON:", err);
     return DEFAULT_SHORTCUTS;
   }
 }
@@ -72,8 +73,8 @@ export function saveShortcuts(map: ShortcutMap): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(SHORTCUT_KEY, JSON.stringify(map));
-  } catch {
-    /* ignore */
+  } catch (err) {
+    console.error("[saveShortcuts] Failed to persist shortcuts to localStorage:", err);
   }
 }
 

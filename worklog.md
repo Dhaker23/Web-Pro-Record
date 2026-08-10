@@ -1390,3 +1390,181 @@ No fixes were applied per task scope. This is a report only.
 
 ### No fixes applied
 Per task scope ("Do NOT fix anything — just report findings"), no source files were modified. Only this worklog entry was appended.
+
+---
+
+## Task ID: DRY-1
+## Agent: Refactoring Engineer
+
+### Task
+Create shared utilities for download and clipboard operations, then replace all duplicated implementations across the codebase.
+
+### Work Log
+
+**Step 1 — `src/lib/download-utils.ts` (new file, 67 lines):**
+- `downloadBlob(blob: Blob, filename: string): void` — creates an object URL + anchor, clicks, then revokes the URL and removes the anchor in a `finally` block. Wrapped in try/catch with `console.error` so failed downloads never throw into UI event handlers.
+- `downloadDataUrl(dataUrl: string, filename: string): void` — same anchor/click/cleanup pattern but uses the data URL directly as `href` (no object URL to create or revoke). Used by snapshot downloads where the source is a `canvas.toDataURL()` string.
+
+**Step 2 — `src/lib/clipboard-utils.ts` (new file, 28 lines):**
+- `copyToClipboard(text: string): Promise<boolean>` — guards against missing `navigator.clipboard?.writeText` (SSR + old browsers), wraps the write in try/catch with `console.error`, returns `true`/`false`. Never throws.
+
+**Step 3 — Replaced duplicate download implementations in `src/hooks/use-recorder.ts` (6 functions):**
+
+| Function | Before (lines) | After |
+|---|---|---|
+| `downloadSnapshot` | 7 lines, manual anchor + `snap.url` | `downloadDataUrl(snap.url, …)` — `snap.url` is a `canvas.toDataURL()` result, so data URL helper is the correct fit. |
+| `downloadClip` | 7 lines, manual anchor + `clip.url` | `downloadBlob(clip.blob, …)` — Clip type has both `url` and `blob`; passing the Blob lets the helper own URL lifecycle. |
+| `downloadHistoryEntry` | 7 lines, manual anchor + `entry.url` | `downloadBlob(entry.blob, …)` — HistoryEntry also has both `url` and `blob`. |
+| `downloadVideo` | 8 lines, manual anchor + `result.url` | `downloadBlob(result.blob, …)` — RecordingResult has both `url` and `blob`. |
+| `downloadStatsJson` | 10 lines, manual blob+URL+anchor+revoke | `downloadBlob(blob, …)` — only the Blob + filename remain. |
+| `downloadManifest` | 10 lines, manual blob+URL+anchor+revoke | `downloadBlob(blob, …)` |
+
+**Bonus (also in the "find ALL duplicates" spirit):** Refactored `downloadJson` in `src/hooks/use-annotations.ts` to use `downloadBlob` — same exact pattern as the stats/manifest downloads. No signature change, only the body.
+
+**Step 4 — Replaced duplicate clipboard implementations in `src/hooks/use-recorder.ts` (3 functions):**
+
+| Function | Before | After |
+|---|---|---|
+| `copyTechnicalDetails` | inline `try { await navigator.clipboard.writeText(details); return true; } catch { return false; }` | `return copyToClipboard(details);` |
+| `copyStatsJson` | same inline pattern | `return copyToClipboard(exportStatsJson());` |
+| `copyManifest` | same inline pattern | `return copyToClipboard(exportManifestJson());` |
+
+All three keep their `Promise<boolean>` signature — `copyToClipboard` returns `Promise<boolean>`, so the `async` wrappers now just `return` it directly.
+
+**Component check:** `clips-gallery.tsx`, `snapshots-gallery.tsx`, `history-panel.tsx` were inspected — none contain inline download/clipboard code; they all delegate to `rec.downloadClip` / `rec.downloadSnapshot` / `rec.downloadHistoryEntry` / `rec.downloadManifest` / `rec.copyManifest` from the hook. No component changes needed.
+
+**Imports added:**
+- `src/hooks/use-recorder.ts`: `import { downloadBlob, downloadDataUrl } from "@/lib/download-utils";` + `import { copyToClipboard } from "@/lib/clipboard-utils";`
+- `src/hooks/use-annotations.ts`: `import { downloadBlob } from "@/lib/download-utils";`
+
+### Verification
+- `bun run lint` → 0 errors, 0 warnings.
+- `npx tsc --noEmit 2>&1 | grep -v "examples/\|skills/"` → 0 lines (all 4 remaining TS errors are pre-existing in `examples/websocket/` and `skills/` directories, unrelated to this refactor).
+- `grep` for `document.createElement("a")` and `navigator.clipboard` across `src/` → only matches inside the two new utility files. All duplicates eliminated.
+
+### Rules Compliance
+- No hook return-object signatures changed (all 9 affected functions keep their original arity + return type).
+- No component prop interfaces changed.
+- Error-handling semantics preserved: `Promise<boolean>` clipboard functions still resolve to `true`/`false`; `void` download functions still don't throw (now they also don't throw on DOM failure, which is a strict improvement).
+- Behavioral note: download/clipboard failures now log to `console.error` (previously swallowed silently). This is the "proper error handling" the task asked for and does not affect any caller — the boolean contract is unchanged.
+
+### Files Touched
+- **New:** `src/lib/download-utils.ts`, `src/lib/clipboard-utils.ts`
+- **Modified:** `src/hooks/use-recorder.ts` (imports + 9 function bodies), `src/hooks/use-annotations.ts` (imports + 1 function body)
+- **Untouched (verified clean):** `src/components/recorder/clips-gallery.tsx`, `snapshots-gallery.tsx`, `history-panel.tsx` — all delegate to the hook.
+
+### Next Actions (for downstream tasks)
+- Consider unifying the manual anchor pattern that may still exist in `src/components/ui/*` (file uploads, etc.) — out of scope for DRY-1.
+- The 6 `CODE-0xx` lint-rule re-enablement items in the prior worklog entry remain open; this refactor makes `no-empty` safer to re-enable for these files since errors are now logged rather than swallowed.
+
+---
+
+## Task ID: CLEAN-1
+## Agent: Code Quality Engineer
+
+### Task
+Fix three classes of code-quality issues in `src/`:
+1. `void X;` hacks that exist only to suppress unused-import warnings.
+2. Silent `catch {}` blocks (empty or comment-only) — add appropriate logging.
+3. Non-null assertions (`Ref.current!`) on refs in `use-recorder.ts`.
+
+### Step 1 — `void X;` hacks removed
+
+Searched `src/` for statement-form `void` patterns. Found 5 hacks; all removed. Each was fixed by removing the void statement AND any now-truly-unused import / dead variable declaration that prompted the hack in the first place. Legitimate fire-and-forget `void someAsyncCall()` discards (e.g. `void v.play().catch(...)`, `void document.exitFullscreen()`, `void rec.togglePiP()`) were left untouched — those are idiomatic TypeScript, not suppression hacks.
+
+| File | Before | After | Rationale |
+|---|---|---|---|
+| `src/components/recorder/help-section.tsx` | `import { cn } from "@/lib/utils";` (line 4) + trailing `void cn;` (line 97) | Both removed | `cn` was never referenced anywhere in the file (verified with `grep '\bcn\b'`). The void was a pure suppression hack. |
+| `src/components/recorder/shortcut-editor.tsx` | `import { cn } from "@/lib/utils";` + `import { ..., loadShortcuts, ... } from "@/lib/shortcuts";` + trailing `void (undefined as unknown as Lang);` + `void loadShortcuts;` | Removed `cn` import, removed `loadShortcuts` from imports, removed both void statements | `Lang` IS used (in the `Props` type at line 26) — the `void (undefined as ...)` was a leftover. `loadShortcuts` is genuinely unused (only `saveShortcuts`/`eventToBinding`/`bindingLabel`/`DEFAULT_SHORTCUTS` are referenced). `cn` is genuinely unused. |
+| `src/components/recorder/waveform-viz.tsx` | trailing `void (undefined as unknown as Lang);` | Removed the void statement | `Lang` is used in the `Props` type. The void was a leftover. |
+| `src/hooks/use-recorder.ts` | inside the circle-clip branch: `const cx = x + targetW / 2; const cy = y + targetH / 2; const r = Math.min(targetW, targetH) / 2;` ... `void cx; void cy; void r;` | Removed all three declarations AND the trailing `void cx; void cy; void r;` line | The variables were dead — the actual `ctx.arc(...)` calls use the recomputed `sx + side / 2, sy + side / 2, side / 2` values, not `cx`/`cy`/`r`. Removed the dead code instead of papering over it with `void`. |
+| `src/components/recorder/shortcuts-dialog.tsx` | (inspected) | No change needed | `Lang` is used in `Props`; no void hack present. |
+| `src/components/recorder/live-preview.tsx` | (inspected) | No change needed | Only fire-and-forget `void somePromise()` patterns; no hacks. |
+
+### Step 2 — Silent catch blocks
+
+Searched `src/` for `catch {` and `catch (e) {` patterns. Found 25 catch blocks total; categorized each by what operation it wraps and applied the task's mapping:
+
+| Category | Treatment | Count |
+|---|---|---|
+| Media API call where denial is expected (`exitPictureInPicture`, `requestPictureInPicture`, `enumerateDevices`, `MediaRecorder.isTypeSupported`, `createMediaStreamSource`, `AudioContext.close`) | `console.debug` | 9 |
+| `MediaRecorder.stop` / `.pause` / `.resume` that can safely fail | `console.debug` | 6 |
+| `canvas.toDataURL` that may throw if tainted | `console.debug` | 2 |
+| `JSON.parse` of persisted state (`loadPrefs`, `loadShortcuts`, `importJson`) | `console.error` | 3 |
+| `localStorage.getItem` / `setItem` (`savePrefs`, `saveShortcuts`, `loadLang`, `saveLang`) | `console.error` | 4 |
+| File read (`file.text()` in `importFromFile`) | `console.error` | 1 |
+| Stream track `tr.stop()` (inside `forEach`) | **kept silent** — task spec excludes ("stream track stop" is noisy) | 1 |
+| `drawAnnotations(ctx)` inside the per-frame render loop | **kept silent** — would fire 30–60×/sec, same category as rAF cancellation | 1 |
+| `new MediaRecorder(stream, options)` with fallback `new MediaRecorder(stream)` (no-options retry) | **kept as-is** — not silent, has a working recovery assignment | 2 |
+
+All `console.debug`/`console.error` calls include a bracketed `[functionName]` prefix for greppability and the original error object for stack-trace context. Where the catch previously had only a `/* ignore */` comment, the comment was replaced with a one-line explanation of *why* the failure is expected (e.g. "PiP may be unsupported, blocked, or denied by the user — non-fatal.").
+
+Files touched for Step 2:
+- `src/hooks/use-annotations.ts` — 2 catches (`importJson`, `importFromFile`)
+- `src/hooks/use-recorder.ts` — 14 catches (`loadPrefs`, `savePrefs`, `cleanupMedia` ×3, `stopRecording` ×3, `buildMixedAudio` ×2, `captureSnapshot`, `captureClip`, `togglePiP`, `stopRecording onstop` ×2, `pauseRecording`, `resumeRecording`)
+- `src/lib/recorder-utils.ts` — 2 catches (`pickMimeType`, `enumerateDevices`)
+- `src/lib/shortcuts.ts` — 2 catches (`loadShortcuts`, `saveShortcuts`)
+- `src/app/page.tsx` — 2 catches (`loadLang`, `saveLang`)
+
+### Step 3 — Non-null assertions on refs
+
+Searched `src/hooks/use-recorder.ts` for `Ref.current!`. Found 5 instances; all replaced with proper guards:
+
+| Line (orig) | Ref | Fix |
+|---|---|---|
+| 754 | `watermarkLogoImgRef.current!` | Hoisted into local `const img = ...; if (!img) return;` — TypeScript narrows `img` to non-null inside the rest of the `if (showLogo)` block. |
+| 1165 | `screenStreamRef.current!` (inside `if (hasScreenAudio)`) | Hoisted into local `const screenStream = ...; if (screenStream) { try { ... } }`. The outer `hasScreenAudio` flag is computed from `screenStreamRef.current?.getAudioTracks() ?? []`, so the truthiness invariant held — but TypeScript couldn't follow that dataflow. |
+| 1173 | `micStreamRef.current!` (inside `if (hasMic)`) | Same pattern as above — hoisted into local with `if (micStream)` guard. |
+| 1608 | `screenVideoRef.current!` | Replaced with `const sVideo = screenVideoRef.current; if (!sVideo) { setError({ kind: "generic", message: "errGeneric" }); return; }`. `ensureHiddenVideos()` runs at line 1534, but it early-returns on SSR — the guard makes that edge case observable instead of crashing. |
+| 1619 | `webcamVideoRef.current!` (inside `if (s.webcamEnabled && webcamStreamRef.current)`) | Hoisted into local `const wVideo = ...; if (wVideo) { ... }`. |
+| 1635 | `canvasRef.current!` (inside `if (useCanvas)` where `useCanvas = ... && !!canvasRef.current`) | Replaced with `const canvas = canvasRef.current; if (!canvas) { setError({ kind: "generic", message: "errGeneric" }); return; }`. The `!!canvasRef.current` in the `useCanvas` condition already proved truthiness — TypeScript just couldn't propagate it through the boolean. |
+
+After the edits, `grep "Ref\.current!" src/hooks/use-recorder.ts` returns 0 results.
+
+### Verification
+
+```
+$ bun run lint
+$ eslint .
+# 0 errors, 0 warnings
+
+$ npx tsc --noEmit 2>&1 | grep -v "examples/\|skills/" | wc -l
+0
+# (the only 4 remaining TS errors are pre-existing in examples/websocket/ and skills/ — out of scope)
+
+$ grep -rEn '^[[:space:]]*void [a-zA-Z_][a-zA-Z0-9_]*[[:space:]]*[;(]' src/ --include='*.ts' --include='*.tsx'
+src/hooks/use-recorder.ts:694:        void enableWebcam();
+src/hooks/use-recorder.ts:708:        void enableWebcam();
+src/hooks/use-recorder.ts:1574:          void stopRecording(true);
+# All 3 remaining are legitimate fire-and-forget Promise discards (the void operator
+# applied to a function CALL that returns a Promise), not suppression hacks.
+# The actual hacks (void cn; / void loadShortcuts; / void cx; void cy; void r; /
+# void (undefined as unknown as Lang);) are all gone.
+
+$ grep "Ref\.current!" src/hooks/use-recorder.ts
+# 0 results
+```
+
+The task's verification command `grep -rn "void " src/ ... | grep -v "void function\|void async\|: void\|<void>\|Promise<void>\|return void\|void 0"` still returns 22 lines, but every match is either:
+- The substring `"avoid "` inside comments (5 lines: "avoid hydration mismatch", "avoid cropping content", "avoid reading refs during render") — false positives from `grep` matching `void ` as a substring of `avoid `.
+- Fire-and-forget Promise discards of the form `void someAsyncFn()` or `void somePromise.catch(...)` (17 lines: `void rec.startRecording()`, `void document.exitPictureInPicture()`, `void audioContextRef.current.close()`, `void enableWebcam()`, `void wVideo.play()`, `void stopRecording(true)`, `void video.play()`, `void document.exitFullscreen()`, `void v.requestFullscreen?.()`, `void rec.togglePiP()`, `void v.play().catch(() => {})`).
+
+None of these are suppression hacks. The targeted patterns — bare `void identifier;` and `void (undefined as unknown as X);` — return 0 results.
+
+### Files Touched
+
+- `src/components/recorder/help-section.tsx` — removed `cn` import + `void cn;`
+- `src/components/recorder/shortcut-editor.tsx` — removed `cn` import, removed `loadShortcuts` from imports, removed `void (undefined as unknown as Lang);` and `void loadShortcuts;`
+- `src/components/recorder/waveform-viz.tsx` — removed `void (undefined as unknown as Lang);`
+- `src/hooks/use-recorder.ts` — removed dead `cx`/`cy`/`r` declarations + `void cx; void cy; void r;`; added logging to 14 catch blocks; replaced 5 non-null ref assertions with guards
+- `src/hooks/use-annotations.ts` — added `console.error` to 2 catch blocks
+- `src/lib/recorder-utils.ts` — added `console.debug` to 2 catch blocks
+- `src/lib/shortcuts.ts` — added `console.error` to 2 catch blocks
+- `src/app/page.tsx` — added `console.error` to 2 catch blocks
+
+### Notes / Next Actions
+
+- The remaining silent catches in `use-recorder.ts` (lines 496 and 886) are deliberately left silent per task spec guidance: `tr.stop()` in the stream-track cleanup loop is called once per track per stream per recording — logging would be noisy. `drawAnnotations(ctx)` runs inside the per-frame render loop and could fire 30–60×/sec if annotations throw — same reasoning.
+- The two `catch { recorder = new MediaRecorder(stream); }` fallback blocks (lines 1310 and 1680 in the updated file) are not silent — they have working recovery assignments. Left untouched.
+- The lint rule `@typescript-eslint/no-unused-vars` is currently `off` in `eslint.config.mjs`. With the void hacks gone, it should now be safe to re-enable this rule (it would flag a small number of remaining unused destructured props like `lang` in `waveform-viz.tsx` and `shortcuts-dialog.tsx` — those are out of scope for CLEAN-1 but worth addressing in a follow-up).
+- The lint rule `no-empty` can also be safely re-enabled for the recorder code paths now that catches have explicit logging.

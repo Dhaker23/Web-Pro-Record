@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { downloadBlob } from "@/lib/download-utils";
 
 export type AnnotationTool = "pen" | "highlighter" | "arrow" | "text" | "eraser";
 
@@ -235,15 +236,8 @@ export function useAnnotations() {
   const downloadJson = useCallback(() => {
     const json = exportJson();
     const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
     const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-    a.download = `wpr-annotations-${ts}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `wpr-annotations-${ts}.json`);
   }, [exportJson]);
 
   /** Round 10: Import annotations from a JSON string. Returns true on success. */
@@ -262,7 +256,8 @@ export function useAnnotations() {
       ) as AnnotationStroke[];
       setStrokes(valid);
       return valid.length > 0;
-    } catch {
+    } catch (err) {
+      console.error("[importJson] Failed to parse annotations JSON:", err);
       return false;
     }
   }, []);
@@ -272,7 +267,8 @@ export function useAnnotations() {
     try {
       const text = await file.text();
       return importJson(text);
-    } catch {
+    } catch (err) {
+      console.error(`[importFromFile] Failed to read file "${file.name}":`, err);
       return false;
     }
   }, [importJson]);

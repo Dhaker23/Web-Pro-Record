@@ -13,7 +13,7 @@ type Props = {
   t: (key: string) => string;
 };
 
-export function ClipsGallery({ rec, lang, t }: Props) {
+export function ClipsGallery({ rec, t }: Props) {
   const clips = rec.clips;
 
   if (clips.length === 0 && !rec.isRecording && !rec.isPaused) return null;

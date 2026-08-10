@@ -1,6 +1,6 @@
 "use client";
 
-import { History, Download, Trash2, Play, RotateCcw, Clock, HardDrive, Film, Copy } from "lucide-react";
+import { History, Download, Trash2, Play, RotateCcw, HardDrive, Film, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatBytes, formatDuration, mimeToLabel } from "@/lib/recorder-utils";

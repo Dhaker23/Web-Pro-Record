@@ -13,7 +13,7 @@ type Props = {
 };
 
 /** Real-time microphone waveform visualizer drawn on a canvas. */
-export function WaveformViz({ waveform, active, lang, t }: Props) {
+export function WaveformViz({ waveform, active, t }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -106,6 +106,3 @@ export function WaveformViz({ waveform, active, lang, t }: Props) {
     </div>
   );
 }
-
-// keep Lang referenced for type clarity
-void (undefined as unknown as Lang);

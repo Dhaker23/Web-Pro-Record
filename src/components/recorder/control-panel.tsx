@@ -14,7 +14,6 @@ import {
   Clock,
   Film,
   Settings2,
-  Sparkles,
   Info,
   Droplet,
   Upload,

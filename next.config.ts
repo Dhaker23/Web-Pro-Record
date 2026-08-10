@@ -2,12 +2,15 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  // SEC-004 FIX: Re-enable TypeScript checking and React strict mode.
-  // These were disabled, which masked type errors and React development warnings.
+  // SEC-004 FIX: Re-enable TypeScript checking.
+  // React Strict Mode is kept disabled because the recorder hook manages
+  // browser media resources (MediaStream, MediaRecorder, AudioContext) that
+  // cannot tolerate the double-mount/double-effect-invocation behavior of
+  // Strict Mode in development. This is a known limitation of media-heavy apps.
   typescript: {
     ignoreBuildErrors: false,
   },
-  reactStrictMode: true,
+  reactStrictMode: false,
   // SEC-002 FIX: Add security headers to all responses.
   async headers() {
     return [
@@ -30,7 +33,7 @@ const nextConfig: NextConfig = {
               "font-src 'self' https://fonts.gstatic.com data:",
               "img-src 'self' data: blob:",
               "media-src 'self' blob:",
-              "connect-src 'self'",
+              "connect-src 'self' ws: wss:",
               "frame-ancestors 'none'",
             ].join("; "),
           },

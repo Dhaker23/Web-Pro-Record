@@ -13,7 +13,7 @@ type Props = {
 };
 
 /** A recording timeline with snapshot markers. Clicking a marker seeks the player. */
-export function RecordingTimeline({ rec, lang, t }: Props) {
+export function RecordingTimeline({ rec, t }: Props) {
   const barRef = useRef<HTMLDivElement | null>(null);
   const [duration, setDuration] = useState(0);
   const [current, setCurrent] = useState(0);

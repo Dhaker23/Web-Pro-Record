@@ -12,12 +12,10 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import {
   type ShortcutMap,
   type ShortcutAction,
   DEFAULT_SHORTCUTS,
-  loadShortcuts,
   saveShortcuts,
   eventToBinding,
   bindingLabel,
@@ -186,7 +184,3 @@ export function ShortcutEditor({ lang, t, shortcuts, onChange, onReset }: Props)
     </Dialog>
   );
 }
-
-// keep imports referenced
-void (undefined as unknown as Lang);
-void loadShortcuts;

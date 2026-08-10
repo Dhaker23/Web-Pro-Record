@@ -8,7 +8,7 @@ type Props = {
   t: (key: string) => string;
 };
 
-export function Footer({ lang, t }: Props) {
+export function Footer({ t }: Props) {
   const email = "dhakeramarawork@gmail.com";
   const whatsapp = "+21699495558";
   const whatsappUrl = `https://wa.me/${whatsapp.replace(/[^0-9]/g, "")}`;
