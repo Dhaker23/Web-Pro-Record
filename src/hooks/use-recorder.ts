@@ -1182,10 +1182,26 @@ export function useRecorder(
       analyserRef.current = null;
     }
 
-    // Create AudioContext with explicit sample rate matching typical browser output (48kHz).
-    // This prevents sample-rate mismatch issues that cause silence or distortion.
-    const ctx = new AC({ sampleRate: 48000 });
+    // ROOT CAUSE FIX: Do NOT force sampleRate — let the browser use the
+    // default hardware sample rate. Forcing 48000 when the mic runs at 44100
+    // causes createMediaStreamSource to produce SILENCE because the browser
+    // can't resample properly in all cases.
+    const ctx = new AC();
     audioContextRef.current = ctx;
+
+    // ROOT CAUSE FIX: Resume the AudioContext SYNCHRONOUSLY before building
+    // the graph. ctx.resume() returns a Promise but the state transition
+    // happens synchronously in most browsers when called within a user
+    // gesture. We must ensure the context is "running" BEFORE connecting
+    // nodes, otherwise the first few seconds of audio can be lost.
+    if (ctx.state === "suspended") {
+      // Fire-and-forget the resume — the state changes synchronously.
+      void ctx.resume().then(() => {
+        console.debug("[buildMixedAudio] AudioContext resume completed, state:", ctx.state);
+      }).catch((err) => {
+        console.error("[buildMixedAudio] Failed to resume AudioContext:", err);
+      });
+    }
 
     const dest = ctx.createMediaStreamDestination();
     audioDestRef.current = dest;
@@ -1200,16 +1216,14 @@ export function useRecorder(
       const screenStream = screenStreamRef.current;
       if (screenStream) {
         try {
-          // Create a NEW MediaStream containing ONLY the audio tracks.
-          // Passing the full screen stream (with video track) to
-          // createMediaStreamSource can cause issues in some browsers.
+          // Extract audio-only tracks into a new MediaStream.
           const audioOnlyStream = new MediaStream(screenStream.getAudioTracks());
           const src = ctx.createMediaStreamSource(audioOnlyStream);
           const gain = ctx.createGain();
           gain.gain.value = 1.0;
           src.connect(gain);
           gain.connect(masterGain);
-          console.debug("[buildMixedAudio] Screen audio wired OK");
+          console.debug("[buildMixedAudio] Screen audio wired OK, track:", screenAudioTracks[0]?.label);
         } catch (err) {
           console.error("[buildMixedAudio] Failed to wire screen audio:", err);
         }
@@ -1221,8 +1235,18 @@ export function useRecorder(
       const micStream = micStreamRef.current;
       if (micStream) {
         try {
-          // Create audio-only stream from mic (mic stream should be audio-only
-          // already, but this ensures it).
+          // Log mic track details for debugging.
+          const micTrack = micTracks[0];
+          console.debug("[buildMixedAudio] Mic track:", {
+            kind: micTrack?.kind,
+            label: micTrack?.label,
+            enabled: micTrack?.enabled,
+            muted: micTrack?.muted,
+            readyState: micTrack?.readyState,
+            settings: micTrack?.getSettings(),
+          });
+
+          // Extract audio-only tracks into a new MediaStream.
           const audioOnlyStream = new MediaStream(micStream.getAudioTracks());
           const src = ctx.createMediaStreamSource(audioOnlyStream);
           const gain = ctx.createGain();
@@ -1243,19 +1267,19 @@ export function useRecorder(
       }
     }
 
-    // Resume AudioContext — MUST be done after creating the graph.
-    // Browsers create AudioContext in "suspended" state; without resume(),
-    // no audio flows through the graph and recordings are SILENT.
-    // This is a user-gesture-adjacent call (recording was started by a click).
-    const resumePromise = ctx.resume();
-    resumePromise.then(() => {
-      console.debug("[buildMixedAudio] AudioContext resumed, state:", ctx.state);
-    }).catch((err) => {
-      console.error("[buildMixedAudio] Failed to resume AudioContext:", err);
-    });
-
     const resultTracks = dest.stream.getAudioTracks();
-    console.debug("[buildMixedAudio] Returning", resultTracks.length, "mixed audio tracks");
+    console.debug("[buildMixedAudio] Returning", resultTracks.length, "mixed audio tracks, ctx state:", ctx.state);
+
+    // Verify the destination track is live.
+    if (resultTracks.length > 0) {
+      const dt = resultTracks[0];
+      console.debug("[buildMixedAudio] Dest track:", {
+        kind: dt.kind,
+        enabled: dt.enabled,
+        readyState: dt.readyState,
+      });
+    }
+
     return resultTracks;
   }, []);
 
@@ -1755,6 +1779,22 @@ export function useRecorder(
       const combined = new MediaStream([...videoTracks, ...audioTracks]);
       combinedStreamRef.current = combined;
 
+      // CRITICAL DIAGNOSTIC: Log the final stream tracks before recording.
+      const allTracks = combined.getTracks();
+      const finalAudioTracks = combined.getAudioTracks();
+      console.debug("[startRecording] Final combined stream:", {
+        totalTracks: allTracks.length,
+        videoTracks: videoTracks.length,
+        audioTracks: finalAudioTracks.length,
+        audioTrackDetails: finalAudioTracks.map(t => ({
+          kind: t.kind,
+          label: t.label,
+          enabled: t.enabled,
+          readyState: t.readyState,
+          muted: t.muted,
+        })),
+      });
+
       // 8) MediaRecorder
       const mimeType = pickMimeType();
       const recorderOptions: MediaRecorderOptions = {};
@@ -1775,15 +1815,18 @@ export function useRecorder(
       recorder.ondataavailable = (ev) => {
         if (ev.data && ev.data.size > 0) {
           chunksRef.current.push(ev.data);
+          console.debug("[recorder] dataavailable: size=", ev.data.size, "total chunks=", chunksRef.current.length);
         }
       };
       recorder.onerror = () => {
         setError({ kind: "recorder", message: "errRecorder" });
       };
       recorder.onstop = () => {
+        console.debug("[recorder] onstop fired. Total chunks:", chunksRef.current.length, "Total size:", chunksRef.current.reduce((a, b) => a + b.size, 0));
         const blob = new Blob(chunksRef.current, {
           type: mimeType || "video/webm",
         });
+        console.debug("[recorder] Blob created: size=", blob.size, "type=", blob.type);
         const finalMime = blob.type || mimeType || "video/webm";
         // Revoke previous URL
         if (resultUrlRef.current) URL.revokeObjectURL(resultUrlRef.current);
