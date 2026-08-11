@@ -1608,12 +1608,18 @@ export function useRecorder(
     setError(null);
     setWarning(null);
 
-    if (!features?.getDisplayMedia || !features?.mediaRecorder) {
+    // Require getUserMedia + MediaRecorder at minimum.
+    // getDisplayMedia (screen capture) is optional — not available on mobile.
+    if (!features?.getUserMedia || !features?.mediaRecorder) {
       setError({ kind: "unsupported", message: "errUnsupported" });
       return;
     }
-    if (!s.webcamEnabled && !s.micEnabled) {
-      // Screen is always required; mic/webcam optional. Screen alone is valid.
+
+    // If screen capture is not available, require webcam or mic to be enabled.
+    const hasScreenCapture = !!features?.getDisplayMedia;
+    if (!hasScreenCapture && !s.webcamEnabled && !s.micEnabled) {
+      setWarning("warnNoSources");
+      return;
     }
 
     // Countdown
@@ -1626,47 +1632,50 @@ export function useRecorder(
     chunksRef.current = [];
 
     try {
-      // 1) Screen capture
-      // For system audio: Chrome requires `audio: true` (boolean) for getDisplayMedia
-      // to request tab/system audio. Object constraints with echoCancellation: false
-      // can actually PREVENT system audio capture in some Chrome versions.
-      const displayConstraints: DisplayMediaStreamOptions = {
-        video: {
-          frameRate: { ideal: Number(s.frameRate) },
-        } as MediaTrackConstraints,
-        audio: s.systemAudioEnabled,
-      };
-      let screen: MediaStream;
-      try {
-        screen = await navigator.mediaDevices.getDisplayMedia(displayConstraints);
-      } catch (e) {
-        const err = e as DOMException;
-        if (err.name === "NotAllowedError") {
-          setError({ kind: "screen-denied", message: "errScreenDenied" });
-        } else {
-          setError({ kind: "screen", message: "errScreenDenied" });
-        }
-        return;
-      }
-      screenStreamRef.current = screen;
-      setScreenStream(screen);
-      const vTrack = screen.getVideoTracks()[0];
-      const label = vTrack?.label || "";
-      setScreenLabel(label);
+      // 1) Screen capture — only attempt if getDisplayMedia is available.
+      // Mobile browsers don't support screen capture; they can still do
+      // webcam + mic recording.
+      let screen: MediaStream | null = null;
+      let vTrack: MediaStreamTrack | undefined = undefined;
 
-      // Detect if system audio actually came through
-      const gotSystemAudio = screen.getAudioTracks().length > 0;
-      if (s.systemAudioEnabled && !gotSystemAudio) {
-        setWarning("systemAudioHint");
-      }
-
-      // Handle user stopping screen share from browser UI
-      vTrack?.addEventListener("ended", () => {
-        if (statusRef.current === "recording" || statusRef.current === "paused") {
-          setWarning("errScreenEnded");
-          void stopRecording(true);
+      if (features?.getDisplayMedia) {
+        const displayConstraints: DisplayMediaStreamOptions = {
+          video: {
+            frameRate: { ideal: Number(s.frameRate) },
+          } as MediaTrackConstraints,
+          audio: s.systemAudioEnabled,
+        };
+        try {
+          screen = await navigator.mediaDevices.getDisplayMedia(displayConstraints);
+        } catch (e) {
+          const err = e as DOMException;
+          if (err.name === "NotAllowedError") {
+            setError({ kind: "screen-denied", message: "errScreenDenied" });
+          } else {
+            setError({ kind: "screen", message: "errScreenDenied" });
+          }
+          return;
         }
-      });
+        screenStreamRef.current = screen;
+        setScreenStream(screen);
+        vTrack = screen.getVideoTracks()[0];
+        const label = vTrack?.label || "";
+        setScreenLabel(label);
+
+        // Detect if system audio actually came through
+        const gotSystemAudio = screen.getAudioTracks().length > 0;
+        if (s.systemAudioEnabled && !gotSystemAudio) {
+          setWarning("systemAudioHint");
+        }
+
+        // Handle user stopping screen share from browser UI
+        vTrack?.addEventListener("ended", () => {
+          if (statusRef.current === "recording" || statusRef.current === "paused") {
+            setWarning("errScreenEnded");
+            void stopRecording(true);
+          }
+        });
+      }
 
       // 2) Microphone
       if (s.micEnabled) {
@@ -1703,24 +1712,46 @@ export function useRecorder(
       // Refresh device labels after permissions
       enumerateDevices().then(setDevices);
 
-      // 3) Set up screen video element
+      // 3) Set up video elements
+      // If screen capture is available, use the screen stream for the base video.
+      // If not (mobile), use the webcam stream as the base video.
       const sVideo = screenVideoRef.current;
       if (!sVideo) {
         setError({ kind: "generic", message: "errGeneric" });
         return;
       }
-      sVideo.srcObject = screen;
-      await sVideo.play().catch(() => {});
-      // Wait for dimensions
-      if (!sVideo.videoWidth) {
-        await new Promise<void>((resolve) => {
-          const onLoaded = () => {
-            sVideo.removeEventListener("loadedmetadata", onLoaded);
-            resolve();
-          };
-          sVideo.addEventListener("loadedmetadata", onLoaded);
-          setTimeout(resolve, 800);
-        });
+
+      if (screen) {
+        // Desktop: screen capture available
+        sVideo.srcObject = screen;
+        await sVideo.play().catch(() => {});
+        // Wait for dimensions
+        if (!sVideo.videoWidth) {
+          await new Promise<void>((resolve) => {
+            const onLoaded = () => {
+              sVideo.removeEventListener("loadedmetadata", onLoaded);
+              resolve();
+            };
+            sVideo.addEventListener("loadedmetadata", onLoaded);
+            setTimeout(resolve, 800);
+          });
+        }
+      } else if (s.webcamEnabled && webcamStreamRef.current) {
+        // Mobile: no screen capture, use webcam as the base video
+        sVideo.srcObject = webcamStreamRef.current;
+        await sVideo.play().catch(() => {});
+        if (!sVideo.videoWidth) {
+          await new Promise<void>((resolve) => {
+            const onLoaded = () => {
+              sVideo.removeEventListener("loadedmetadata", onLoaded);
+              resolve();
+            };
+            sVideo.addEventListener("loadedmetadata", onLoaded);
+            setTimeout(resolve, 800);
+          });
+        }
+        // Use webcam video track as the "vTrack"
+        vTrack = webcamStreamRef.current.getVideoTracks()[0];
       }
 
       // 4) Webcam video element
@@ -1762,7 +1793,7 @@ export function useRecorder(
       // before any audio nodes are connected. Without this await, the
       // MediaStreamDestination produces SILENCE.
       let audioTracks = await buildMixedAudio();
-      if (audioTracks.length === 0 && s.systemAudioEnabled) {
+      if (audioTracks.length === 0 && s.systemAudioEnabled && screen) {
         const screenAudio = screen.getAudioTracks();
         if (screenAudio.length > 0) {
           audioTracks = screenAudio;
@@ -2151,8 +2182,11 @@ export function useRecorder(
 
   const isRecording = status === "recording";
   const isPaused = status === "paused";
+  // canStart: allow recording if the browser has getUserMedia + MediaRecorder.
+  // getDisplayMedia (screen capture) is NOT required — mobile browsers can
+  // still do webcam + mic recording without it.
   const canStart =
-    !!features?.getDisplayMedia &&
+    !!features?.getUserMedia &&
     !!features?.mediaRecorder &&
     (status === "idle" || status === "stopped");
 

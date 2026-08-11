@@ -5,6 +5,7 @@ import { useTheme } from "next-themes";
 import { AlertTriangle, X, Radio } from "lucide-react";
 import { useRecorder } from "@/hooks/use-recorder";
 import { useAnnotations } from "@/hooks/use-annotations";
+import { canRecordAtAll, canCaptureScreen } from "@/lib/recorder-utils";
 import { translate, isRtl, type Lang } from "@/lib/i18n";
 import {
   type ShortcutMap,
@@ -225,8 +226,15 @@ export default function Home() {
     setShowBanner(!chromium);
   }, []);
 
+  // Only block the app if the browser can't do ANY recording at all
+  // (no getUserMedia or no MediaRecorder). Screen capture (getDisplayMedia)
+  // is optional — mobile browsers don't support it but can still do webcam + mic.
   const unsupported =
-    rec.features && (!rec.features.getDisplayMedia || !rec.features.mediaRecorder || !rec.features.canvasCapture);
+    rec.features && !canRecordAtAll(rec.features);
+
+  // Screen capture is not available (mobile browsers, some Firefox versions)
+  const noScreenCapture =
+    rec.features && !canCaptureScreen(rec.features) && !unsupported;
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -260,7 +268,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Unsupported blocker */}
+      {/* Unsupported blocker — only shown if browser can't do ANY recording */}
       {unsupported && (
         <div className="border-b border-red-500/30 bg-red-500/10">
           <div className="mx-auto flex max-w-7xl items-start gap-3 px-4 py-4 sm:px-6">
@@ -271,6 +279,22 @@ export default function Home() {
               </p>
               <p className="mt-0.5 text-xs text-red-700/80 dark:text-red-300/80">
                 {t("errUnsupported")}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Screen capture not available (mobile browsers) — soft warning, not a blocker */}
+      {noScreenCapture && (
+        <div className="border-b border-amber-500/30 bg-amber-500/10">
+          <div className="mx-auto flex max-w-7xl items-start gap-3 px-4 py-3 sm:px-6">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="flex-1">
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                {lang === "ar"
+                  ? "التقاط الشاشة غير متاح في هذا المتصفح. يمكنك تسجيل الكاميرا والميكروفون فقط."
+                  : "Screen capture is not available in this browser. You can still record webcam and microphone."}
               </p>
             </div>
           </div>

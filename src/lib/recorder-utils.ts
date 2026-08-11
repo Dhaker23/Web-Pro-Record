@@ -102,6 +102,8 @@ export function detectFeatures(): FeatureSupport {
   };
   const hasCanvasCapture = typeof HTMLCanvasElement !== "undefined" && "captureStream" in HTMLCanvasElement.prototype;
   return {
+    // getDisplayMedia is screen capture — NOT available on most mobile browsers.
+    // This is OK: the app can still do webcam + mic recording without it.
     getDisplayMedia:
       typeof nav.mediaDevices?.getDisplayMedia === "function" &&
       typeof nav.mediaDevices?.getUserMedia === "function",
@@ -114,6 +116,25 @@ export function detectFeatures(): FeatureSupport {
       typeof (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext !== "undefined",
     isSecureContext: typeof window !== "undefined" ? window.isSecureContext : true,
   };
+}
+
+/**
+ * Determine if the browser can do ANY recording (webcam + mic at minimum).
+ * Screen capture (getDisplayMedia) is optional — not available on mobile.
+ * Canvas capture is optional — only needed for webcam overlay compositing.
+ */
+export function canRecordAtAll(features: FeatureSupport | null): boolean {
+  if (!features) return false;
+  // Must have getUserMedia (webcam + mic) and MediaRecorder.
+  return features.getUserMedia && features.mediaRecorder;
+}
+
+/**
+ * Determine if screen capture is available (desktop browsers only).
+ */
+export function canCaptureScreen(features: FeatureSupport | null): boolean {
+  if (!features) return false;
+  return features.getDisplayMedia;
 }
 
 export type DeviceList = {
