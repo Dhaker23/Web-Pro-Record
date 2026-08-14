@@ -226,12 +226,11 @@ export default function Home() {
     setShowBanner(!chromium);
   }, []);
 
-  // Only block the app if the browser can't do ANY recording at all
-  // (no getUserMedia or no MediaRecorder). Screen capture (getDisplayMedia)
-  // is optional — we don't pre-block it; the app will show a graceful error
-  // at recording time if screen capture is truly unavailable.
-  const unsupported =
-    rec.features && !canRecordAtAll(rec.features);
+  // Never hard-block the app. Some browsers report features as unavailable
+  // but still work when the user actually tries to record. Instead of a
+  // red blocker, we show a soft dismissible notice if features seem missing.
+  // The actual recording attempt will show specific errors if something fails.
+  const unsupported = false;
 
   return (
     <div className="flex min-h-screen flex-col bg-background">

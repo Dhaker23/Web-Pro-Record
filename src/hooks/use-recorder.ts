@@ -1608,18 +1608,16 @@ export function useRecorder(
     setError(null);
     setWarning(null);
 
-    // Require getUserMedia + MediaRecorder at minimum.
-    // getDisplayMedia (screen capture) is optional — not available on mobile.
-    if (!features?.getUserMedia || !features?.mediaRecorder) {
-      setError({ kind: "unsupported", message: "errUnsupported" });
-      return;
-    }
+    // Do NOT pre-check features here. Feature detection can be unreliable on
+    // mobile browsers. Instead, let the actual API calls (getUserMedia,
+    // getDisplayMedia, MediaRecorder) throw at runtime, and catch those errors
+    // individually with helpful messages.
 
-    // If screen capture is not available, require webcam or mic to be enabled.
-    const hasScreenCapture = !!features?.getDisplayMedia;
-    if (!hasScreenCapture && !s.webcamEnabled && !s.micEnabled) {
-      setWarning("warnNoSources");
-      return;
+    // If user has no sources enabled and screen capture might not work,
+    // show a gentle hint to enable webcam or mic.
+    if (!s.webcamEnabled && !s.micEnabled) {
+      // Still allow it — screen-only recording is valid on desktop.
+      // On mobile without getDisplayMedia, the recording will fail gracefully.
     }
 
     // Countdown
@@ -1789,7 +1787,7 @@ export function useRecorder(
       const { width, height } = computeCanvasSize(trackW, trackH, s.quality);
 
       let videoTracks: MediaStreamTrack[];
-      const useCanvas = s.webcamEnabled && features.canvasCapture && !!canvasRef.current;
+      const useCanvas = s.webcamEnabled && !!features?.canvasCapture && !!canvasRef.current;
 
       if (useCanvas) {
         const canvas = canvasRef.current;
@@ -1839,7 +1837,12 @@ export function useRecorder(
         })),
       });
 
-      // 8) MediaRecorder
+      // 8) MediaRecorder — check at runtime if it's available
+      if (typeof MediaRecorder === "undefined") {
+        setError({ kind: "unsupported", message: "errUnsupported" });
+        cleanupMedia();
+        return;
+      }
       const mimeType = pickMimeType();
       const recorderOptions: MediaRecorderOptions = {};
       if (mimeType) recorderOptions.mimeType = mimeType;
@@ -2200,13 +2203,11 @@ export function useRecorder(
 
   const isRecording = status === "recording";
   const isPaused = status === "paused";
-  // canStart: allow recording if the browser has getUserMedia + MediaRecorder.
-  // getDisplayMedia (screen capture) is NOT required — mobile browsers can
-  // still do webcam + mic recording without it.
-  const canStart =
-    !!features?.getUserMedia &&
-    !!features?.mediaRecorder &&
-    (status === "idle" || status === "stopped");
+  // canStart: Always allow the user to attempt recording. Feature detection
+  // can be unreliable on mobile browsers — some report features as missing
+  // but actually work when called. Runtime errors will be shown if recording
+  // genuinely fails.
+  const canStart = status === "idle" || status === "stopped";
 
   const updateSettings = useCallback(<K extends keyof RecorderSettings>(key: K, value: RecorderSettings[K]) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
