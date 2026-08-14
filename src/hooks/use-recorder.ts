@@ -1632,13 +1632,22 @@ export function useRecorder(
     chunksRef.current = [];
 
     try {
-      // 1) Screen capture — only attempt if getDisplayMedia is available.
-      // Mobile browsers don't support screen capture; they can still do
-      // webcam + mic recording.
+      // 1) Screen capture — try to use getDisplayMedia if the function exists.
+      // On mobile browsers, getDisplayMedia may not exist at all — in that case,
+      // we skip screen capture and use the webcam as the video source instead.
+      // If getDisplayMedia exists but throws (user denies or unsupported),
+      // we show an error ONLY if no webcam/mic is enabled as fallback.
       let screen: MediaStream | null = null;
       let vTrack: MediaStreamTrack | undefined = undefined;
 
-      if (features?.getDisplayMedia) {
+      const nav = navigator as Navigator & {
+        mediaDevices?: MediaDevices & {
+          getDisplayMedia?: (cs?: DisplayMediaStreamOptions) => Promise<MediaStream>;
+        };
+      };
+      const hasGetDisplayMedia = typeof nav.mediaDevices?.getDisplayMedia === "function";
+
+      if (hasGetDisplayMedia) {
         const displayConstraints: DisplayMediaStreamOptions = {
           video: {
             frameRate: { ideal: Number(s.frameRate) },
@@ -1646,35 +1655,44 @@ export function useRecorder(
           audio: s.systemAudioEnabled,
         };
         try {
-          screen = await navigator.mediaDevices.getDisplayMedia(displayConstraints);
+          screen = await nav.mediaDevices!.getDisplayMedia!(displayConstraints);
         } catch (e) {
           const err = e as DOMException;
-          if (err.name === "NotAllowedError") {
-            setError({ kind: "screen-denied", message: "errScreenDenied" });
+          // If user denied screen capture but has webcam/mic enabled,
+          // continue without screen capture instead of blocking.
+          if (s.webcamEnabled || s.micEnabled) {
+            console.debug("[startRecording] Screen capture failed, continuing with webcam/mic only:", err.message);
           } else {
-            setError({ kind: "screen", message: "errScreenDenied" });
+            // No webcam/mic fallback — show the error
+            if (err.name === "NotAllowedError") {
+              setError({ kind: "screen-denied", message: "errScreenDenied" });
+            } else {
+              setError({ kind: "screen", message: "errScreenDenied" });
+            }
+            return;
           }
-          return;
         }
-        screenStreamRef.current = screen;
-        setScreenStream(screen);
-        vTrack = screen.getVideoTracks()[0];
-        const label = vTrack?.label || "";
-        setScreenLabel(label);
+        if (screen) {
+          screenStreamRef.current = screen;
+          setScreenStream(screen);
+          vTrack = screen.getVideoTracks()[0];
+          const label = vTrack?.label || "";
+          setScreenLabel(label);
 
-        // Detect if system audio actually came through
-        const gotSystemAudio = screen.getAudioTracks().length > 0;
-        if (s.systemAudioEnabled && !gotSystemAudio) {
-          setWarning("systemAudioHint");
-        }
-
-        // Handle user stopping screen share from browser UI
-        vTrack?.addEventListener("ended", () => {
-          if (statusRef.current === "recording" || statusRef.current === "paused") {
-            setWarning("errScreenEnded");
-            void stopRecording(true);
+          // Detect if system audio actually came through
+          const gotSystemAudio = screen.getAudioTracks().length > 0;
+          if (s.systemAudioEnabled && !gotSystemAudio) {
+            setWarning("systemAudioHint");
           }
-        });
+
+          // Handle user stopping screen share from browser UI
+          vTrack?.addEventListener("ended", () => {
+            if (statusRef.current === "recording" || statusRef.current === "paused") {
+              setWarning("errScreenEnded");
+              void stopRecording(true);
+            }
+          });
+        }
       }
 
       // 2) Microphone
