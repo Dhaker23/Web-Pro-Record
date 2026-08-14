@@ -1631,10 +1631,6 @@ export function useRecorder(
 
     try {
       // 1) Screen capture — try to use getDisplayMedia if the function exists.
-      // On mobile browsers, getDisplayMedia may not exist at all — in that case,
-      // we skip screen capture and use the webcam as the video source instead.
-      // If getDisplayMedia exists but throws (user denies or unsupported),
-      // we show an error ONLY if no webcam/mic is enabled as fallback.
       let screen: MediaStream | null = null;
       let vTrack: MediaStreamTrack | undefined = undefined;
 
@@ -1645,6 +1641,8 @@ export function useRecorder(
       };
       const hasGetDisplayMedia = typeof nav.mediaDevices?.getDisplayMedia === "function";
 
+      console.debug("[startRecording] getDisplayMedia available:", hasGetDisplayMedia);
+
       if (hasGetDisplayMedia) {
         const displayConstraints: DisplayMediaStreamOptions = {
           video: {
@@ -1654,14 +1652,18 @@ export function useRecorder(
         };
         try {
           screen = await nav.mediaDevices!.getDisplayMedia!(displayConstraints);
+          console.debug("[startRecording] Screen capture success:", {
+            videoTracks: screen.getVideoTracks().length,
+            audioTracks: screen.getAudioTracks().length,
+            videoTrackLabel: screen.getVideoTracks()[0]?.label,
+            videoTrackSettings: screen.getVideoTracks()[0]?.getSettings(),
+          });
         } catch (e) {
           const err = e as DOMException;
-          // If user denied screen capture but has webcam/mic enabled,
-          // continue without screen capture instead of blocking.
+          console.debug("[startRecording] Screen capture failed:", err.name, err.message);
           if (s.webcamEnabled || s.micEnabled) {
-            console.debug("[startRecording] Screen capture failed, continuing with webcam/mic only:", err.message);
+            // Continue without screen capture
           } else {
-            // No webcam/mic fallback — show the error
             if (err.name === "NotAllowedError") {
               setError({ kind: "screen-denied", message: "errScreenDenied" });
             } else {
@@ -1677,19 +1679,41 @@ export function useRecorder(
           const label = vTrack?.label || "";
           setScreenLabel(label);
 
-          // Detect if system audio actually came through
           const gotSystemAudio = screen.getAudioTracks().length > 0;
           if (s.systemAudioEnabled && !gotSystemAudio) {
             setWarning("systemAudioHint");
           }
 
-          // Handle user stopping screen share from browser UI
           vTrack?.addEventListener("ended", () => {
             if (statusRef.current === "recording" || statusRef.current === "paused") {
               setWarning("errScreenEnded");
               void stopRecording(true);
             }
           });
+        }
+      }
+
+      // If screen capture is not available, auto-enable webcam as the video source.
+      // This ensures there's always a video track in the recording.
+      if (!screen && s.webcamEnabled && webcamStreamRef.current) {
+        // Webcam is already enabled from the idle preview
+        console.debug("[startRecording] No screen capture — using webcam as video source");
+        vTrack = webcamStreamRef.current.getVideoTracks()[0];
+      } else if (!screen && !s.webcamEnabled) {
+        // No screen and no webcam — try to get webcam automatically for video
+        console.debug("[startRecording] No screen or webcam — attempting auto webcam for video");
+        try {
+          const camStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user" },
+            audio: false,
+          });
+          webcamStreamRef.current = camStream;
+          setWebcamStream(camStream);
+          vTrack = camStream.getVideoTracks()[0];
+          console.debug("[startRecording] Auto webcam enabled for video");
+        } catch (err) {
+          console.debug("[startRecording] Auto webcam failed:", err);
+          // Continue with audio-only recording
         }
       }
 
@@ -1752,8 +1776,9 @@ export function useRecorder(
             setTimeout(resolve, 800);
           });
         }
-      } else if (s.webcamEnabled && webcamStreamRef.current) {
-        // Mobile: no screen capture, use webcam as the base video
+      } else if (webcamStreamRef.current) {
+        // Mobile: no screen capture — use webcam stream as the base video.
+        // This covers both user-enabled webcam AND auto-enabled webcam.
         sVideo.srcObject = webcamStreamRef.current;
         await sVideo.play().catch(() => {});
         if (!sVideo.videoWidth) {
@@ -1768,6 +1793,7 @@ export function useRecorder(
         }
         // Use webcam video track as the "vTrack"
         vTrack = webcamStreamRef.current.getVideoTracks()[0];
+        console.debug("[startRecording] Using webcam stream for video, vTrack:", vTrack?.label);
       }
 
       // 4) Webcam video element
