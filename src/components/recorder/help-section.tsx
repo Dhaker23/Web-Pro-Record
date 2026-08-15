@@ -18,6 +18,9 @@ export function HelpSection({ rec, lang, t }: Props) {
     { icon: Video, label: t("helpSupportsRecorder"), ok: !!f?.mediaRecorder },
     { icon: Square, label: t("helpSupportsCanvas"), ok: !!f?.canvasCapture },
   ];
+
+  // Check if screen capture is the only missing feature
+  const onlyScreenMissing = !f?.getDisplayMedia && !!f?.getUserMedia && !!f?.mediaRecorder;
   const notes = [t("helpNote1"), t("helpNote2"), t("helpNote3"), t("helpNote4"), t("helpNote5")];
 
   return (
@@ -63,6 +66,19 @@ export function HelpSection({ rec, lang, t }: Props) {
           {/* Notes */}
           <div>
             <h3 className="text-base font-semibold">{t("helpNotes")}</h3>
+
+            {/* If only screen capture is missing (mobile), show positive message */}
+            {onlyScreenMissing && (
+              <div className="mt-3 flex items-start gap-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm">
+                <Check className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+                <span className="text-emerald-700 dark:text-emerald-300">
+                  {lang === "ar"
+                    ? "تسجيل الكاميرا والميكروفون يعمل بشكل كامل على هذا الجهاز. التقاط الشاشة غير مدعوم في هذا المتصفح — استخدم متصفح Chrome على الكمبيوتر لتسجيل الشاشة."
+                    : "Webcam and microphone recording fully works on this device. Screen capture is not supported by this browser — use Chrome on a computer for screen recording."}
+                </span>
+              </div>
+            )}
+
             <ul className="mt-3 space-y-2">
               {notes.map((n, i) => (
                 <li
